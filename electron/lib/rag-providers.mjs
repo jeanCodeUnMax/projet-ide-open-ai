@@ -52,6 +52,25 @@ function mimeTypeFromExtension(extension) {
   })[extension] ?? 'application/octet-stream'
 }
 
+export function splitPdfPages(text) {
+  const normalized = String(text ?? '').replace(/\r\n/g, '\n')
+  const parts = normalized.split('\f')
+  if (parts.length > 1 && !parts.at(-1)?.trim()) parts.pop()
+  return parts.map((pageText, index) => ({ number: index + 1, text: pageText.trimEnd() }))
+}
+
+export function parsePdfImagesList(output) {
+  return String(output ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^\d+\s+\d+\s+/.test(line))
+    .map((line) => {
+      const columns = line.split(/\s+/)
+      return { page: Number(columns[0]), sequence: Number(columns[1]) + 1 }
+    })
+    .filter((entry) => Number.isInteger(entry.page) && entry.page > 0)
+}
+
 export class LocalDocumentExtractor {
   constructor({ languages = 'fra+eng', minPdfTextChars = 120, extractPdfImages = true } = {}) {
     this.languages = languages
@@ -65,7 +84,7 @@ export class LocalDocumentExtractor {
 
     if (['.md', '.txt', '.json'].includes(extension)) {
       const text = await readFile(sourcePath, 'utf8')
-      return { text, mimeType, pages: [], images: [], extraction: { method: 'native-text' } }
+      return { text, mimeType, pages: [{ number: 1, text }], images: [], extraction: { method: 'native-text' } }
     }
 
     if (extension === '.pdf') return this.#extractPdf(sourcePath, mimeType)
@@ -75,8 +94,8 @@ export class LocalDocumentExtractor {
         text,
         mimeType,
         pages: [{ number: 1, text }],
-        images: [{ path: sourcePath, page: 1, source: 'document' }],
-        extraction: { method: 'tesseract' },
+        images: [{ path: sourcePath, page: 1, sequence: 1, source: 'document' }],
+        extraction: { method: 'tesseract', languages: this.languages },
       }
     }
 
@@ -108,17 +127,18 @@ export class LocalDocumentExtractor {
         ])
         const extracted = await runCommand('pdftotext', ['-layout', searchablePdf, '-'])
         const sidecarText = await readFile(sidecar, 'utf8').catch(() => '')
-        text = extracted.stdout.trim().length >= sidecarText.trim().length ? extracted.stdout : sidecarText
+        text = extracted.stdout.trim().length > 0 ? extracted.stdout : sidecarText
         method = 'ocrmypdf+pdftotext'
       }
 
+      const pages = splitPdfPages(text)
       const images = this.shouldExtractPdfImages ? await this.#extractPdfImages(sourcePath, temporaryDirectory) : []
       return {
-        text,
+        text: pages.map((page) => page.text).join('\n\n'),
         mimeType,
-        pages: [],
+        pages,
         images,
-        extraction: { method, languages: this.languages },
+        extraction: { method, languages: this.languages, pageCount: pages.length },
         cleanup: () => rm(temporaryDirectory, { recursive: true, force: true }),
       }
     } catch (error) {
@@ -130,13 +150,15 @@ export class LocalDocumentExtractor {
   async #extractPdfImages(sourcePath, temporaryDirectory) {
     if (!(await commandAvailable('pdfimages', ['-v']))) return []
     const prefix = path.join(temporaryDirectory, 'image')
+    const listing = await runCommand('pdfimages', ['-list', sourcePath]).catch(() => ({ stdout: '' }))
+    const imageRows = parsePdfImagesList(listing.stdout)
     await runCommand('pdfimages', ['-png', sourcePath, prefix]).catch(() => undefined)
     const files = (await readdir(temporaryDirectory))
       .filter((file) => file.startsWith('image-') && file.endsWith('.png'))
       .sort()
     return files.map((file, index) => ({
       path: path.join(temporaryDirectory, file),
-      page: undefined,
+      page: imageRows[index]?.page,
       sequence: index + 1,
       source: 'pdfimages',
     }))
@@ -253,10 +275,7 @@ export class QdrantVectorStore {
 
   async ensureCollection(vectorSize) {
     const url = `${this.baseUrl}/collections/${encodeURIComponent(this.collection)}`
-    const existing = await this.fetchImpl(url, {
-      headers: this.#headers(),
-      signal: AbortSignal.timeout(this.timeoutMs),
-    })
+    const existing = await this.fetchImpl(url, { headers: this.#headers(), signal: AbortSignal.timeout(this.timeoutMs) })
     if (existing.ok) return
     if (existing.status !== 404) throw new Error(`Qdrant collection: HTTP ${existing.status}`)
     const created = await this.fetchImpl(url, {
@@ -273,13 +292,7 @@ export class QdrantVectorStore {
     const response = await this.fetchImpl(`${this.baseUrl}/collections/${encodeURIComponent(this.collection)}/points/search`, {
       method: 'POST',
       headers: this.#headers(),
-      body: JSON.stringify({
-        vector,
-        limit,
-        with_payload: true,
-        with_vector: false,
-        ...(filter ? { filter } : {}),
-      }),
+      body: JSON.stringify({ vector, limit, with_payload: true, with_vector: false, ...(filter ? { filter } : {}) }),
       signal: AbortSignal.timeout(this.timeoutMs),
     })
     const payload = await response.json().catch(() => ({}))
@@ -297,12 +310,14 @@ export class QdrantVectorStore {
       payload: {
         documentId: document.id,
         sourcePath: document.sourcePath,
+        sourceChecksum: document.sourceChecksum,
         title: document.title,
         mimeType: document.mimeType,
         tags: document.tags,
         chunkIndex: chunk.index,
         text: chunk.text,
         checksum: chunk.checksum,
+        citation: chunk.citation,
       },
     }))
     const response = await this.fetchImpl(`${this.baseUrl}/collections/${encodeURIComponent(this.collection)}/points?wait=true`, {
