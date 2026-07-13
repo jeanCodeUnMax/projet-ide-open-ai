@@ -1,6 +1,6 @@
 {
   "name": "projet-ide-open-ai",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "IDE agentique Electron basé sur OpenFox avec MCP, A2A, Hephaistos et ingestion RAG multimodale.",
   "type": "module",
   "main": "electron/main.mjs",
@@ -12,6 +12,7 @@
     "dev": "electron . --dev",
     "check": "node scripts/smoke-check.mjs && node --test",
     "a2a:dev": "node scripts/a2a-dev-server.mjs",
+    "a2a:openfox": "node scripts/a2a-openfox-server.mjs",
     "rag:ingest": "node scripts/ingest-document.mjs",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win nsis",
