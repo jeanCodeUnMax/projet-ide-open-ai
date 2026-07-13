@@ -1,0 +1,12 @@
+node_modules/
+release/
+dist/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+coverage/
+
+# Workspace-generated RAG, tasks, memory and logs.
+.ide-ai/

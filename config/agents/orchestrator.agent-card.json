@@ -1,0 +1,47 @@
+{
+  "name": "IDE Open AI Orchestrator",
+  "description": "Orchestre les agents du workspace, délègue les tâches et réutilise la mémoire unifiée Hephaistos lorsqu’elle est disponible.",
+  "version": "0.2.0",
+  "supportedInterfaces": [
+    {
+      "url": "http://127.0.0.1:43110",
+      "protocolBinding": "HTTP+JSON",
+      "protocolVersion": "1.0"
+    }
+  ],
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false
+  },
+  "defaultInputModes": ["text/plain", "application/json"],
+  "defaultOutputModes": ["text/plain", "application/json"],
+  "skills": [
+    {
+      "id": "agent-orchestration",
+      "name": "Orchestration multi-agents",
+      "description": "Sélectionne, délègue et suit des tâches entre agents A2A.",
+      "tags": ["a2a", "orchestration", "agents", "workflow"],
+      "examples": ["Délègue l’audit sécurité à un agent spécialisé."],
+      "inputModes": ["text/plain", "application/json"],
+      "outputModes": ["text/plain", "application/json"]
+    },
+    {
+      "id": "rag-ingestion",
+      "name": "Ingestion RAG multimodale",
+      "description": "Coordonne OCR PDF, description d’images, tags, chunks, embeddings et index vectoriel.",
+      "tags": ["rag", "ocr", "vision", "embeddings", "qdrant"],
+      "examples": ["Indexe ce PDF scanné et décris ses graphiques."],
+      "inputModes": ["application/pdf", "image/png", "image/jpeg", "text/markdown"],
+      "outputModes": ["text/markdown", "application/json"]
+    },
+    {
+      "id": "unified-memory",
+      "name": "Mémoire unifiée Hephaistos",
+      "description": "Interroge et enrichit une mémoire de workspace externe sans dupliquer le service existant.",
+      "tags": ["hephaistos", "memory", "watchdog", "workspace"],
+      "examples": ["Récupère le contexte du projet avant de commencer."],
+      "inputModes": ["text/plain", "application/json"],
+      "outputModes": ["application/json"]
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "schemaVersion": "0.2.0",
+  "application": {
+    "id": "ai.open.ide",
+    "name": "IDE Open AI",
+    "architecture": "desktop-agent-operating-system"
+  },
+  "services": {
+    "orchestrator": {
+      "responsibility": "router les intentions, sélectionner les agents et suivre les tâches",
+      "protocols": [
+        "A2A"
+      ],
+      "dependsOn": [
+        "agentRegistry",
+        "memoryGateway",
+        "observability"
+      ]
+    },
+    "agentRegistry": {
+      "responsibility": "enregistrer et rechercher les Agent Cards par capacités et tags",
+      "storage": ".ide-ai/agents/index.json"
+    },
+    "mcpGateway": {
+      "responsibility": "connecter les agents aux outils et ressources",
+      "protocols": [
+        "MCP stdio",
+        "MCP Streamable HTTP"
+      ],
+      "toolLimit": 100
+    },
+    "memoryGateway": {
+      "responsibility": "réutiliser la mémoire unifiée et le watchdog du workspace",
+      "primaryAdapter": "hephaistos",
+      "fallback": "none"
+    },
+    "ragIngestion": {
+      "responsibility": "transformer les documents en corpus multimodal indexé",
+      "pipeline": [
+        "checksum",
+        "text-extraction",
+        "pdf-ocr",
+        "image-extraction",
+        "image-description",
+        "tag-enrichment",
+        "chunking",
+        "embedding",
+        "vector-upsert",
+        "index-json"
+      ],
+      "outputs": [
+        "document.md",
+        "manifest.json",
+        "index.json",
+        "INDEX.md"
+      ]
+    },
+    "vectorStore": {
+      "primary": "qdrant",
+      "payloadFields": [
+        "documentId",
+        "sourcePath",
+        "title",
+        "mimeType",
+        "tags",
+        "chunkIndex",
+        "checksum",
+        "text"
+      ]
+    },
+    "observability": {
+      "responsibility": "journaliser les tâches, erreurs, décisions et événements watchdog",
+      "levels": [
+        "std0",
+        "std1",
+        "std2"
+      ]
+    }
+  },
+  "agents": {
+    "orchestrator": "config/agents/orchestrator.agent-card.json",
+    "planned": [
+      "planner",
+      "code-worker",
+      "reviewer",
+      "security-auditor",
+      "rag-ingestion",
+      "researcher",
+      "documentation",
+      "test-runner"
+    ]
+  },
+  "workspace": {
+    "root": ".ide-ai",
+    "directories": {
+      "agents": ".ide-ai/agents",
+      "memory": ".ide-ai/memory",
+      "rag": ".ide-ai/rag",
+      "tasks": ".ide-ai/tasks",
+      "artifacts": ".ide-ai/artifacts",
+      "logs": ".ide-ai/logs"
+    }
+  },
+  "kind": "IDEOpenAIAppSchema"
+}
