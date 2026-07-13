@@ -1,4 +1,4 @@
-# État de livraison — MVP 0.2.0
+# État de livraison — MVP 0.3.0
 
 ## Validé dans l’environnement de construction
 
@@ -24,7 +24,9 @@ curl http://127.0.0.1:43110/.well-known/agent-card.json
 curl -X POST http://127.0.0.1:43110/message:send ...
 ```
 
-Résultat automatisé : **16 tests réussis, 0 échec**.
+Résultat automatisé : **20 tests réussis, 0 échec**.
+
+La tranche 0.3 ajoute le registre persistant d’agents, la file d’ingestion avec progression, la recherche lexicale et la fusion vectorielle optionnelle.
 
 Le test HTTP A2A a produit une tâche `TASK_STATE_COMPLETED` avec un artefact. Le test RAG a produit `document.md`, `manifest.json`, `index.json` et `INDEX.md`.
 

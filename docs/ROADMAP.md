@@ -25,13 +25,13 @@
 
 ## Phase 2 — Intégration IDE
 
-- [ ] panneau Agents et Agent Cards ;
-- [ ] panneau RAG avec glisser-déposer ;
-- [ ] état visuel de l’ingestion par étape ;
-- [ ] recherche hybride BM25 + Qdrant ;
+- [x] panneau Agents et Agent Cards ;
+- [x] panneau RAG avec glisser-déposer ;
+- [x] état visuel de l’ingestion par étape ;
+- [x] recherche hybride lexicale + Qdrant avec RRF ;
 - [ ] citations vers page, image et chunk ;
 - [ ] liaison réelle entre l’executor A2A et les sessions OpenFox ;
-- [ ] configuration Hephaistos par workspace ;
+- [ ] configuration Hephaistos par workspace avec validation de contrat ;
 - [ ] affichage std0/std1/std2 du watchdog.
 
 ## Phase 3 — Protocoles complets

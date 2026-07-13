@@ -268,6 +268,25 @@ export class QdrantVectorStore {
     if (!created.ok) throw new Error(`Création collection Qdrant: HTTP ${created.status}`)
   }
 
+  async search(vector, { limit = 20, filter } = {}) {
+    if (!Array.isArray(vector) || vector.length === 0) return []
+    const response = await this.fetchImpl(`${this.baseUrl}/collections/${encodeURIComponent(this.collection)}/points/search`, {
+      method: 'POST',
+      headers: this.#headers(),
+      body: JSON.stringify({
+        vector,
+        limit,
+        with_payload: true,
+        with_vector: false,
+        ...(filter ? { filter } : {}),
+      }),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.status?.error ?? `Recherche Qdrant: HTTP ${response.status}`)
+    return payload.result ?? []
+  }
+
   async upsert({ document, chunks, vectors }) {
     if (vectors.length !== chunks.length) throw new Error('Le nombre de vecteurs ne correspond pas aux chunks.')
     if (vectors.length === 0) return { status: 'skipped', pointIds: [] }

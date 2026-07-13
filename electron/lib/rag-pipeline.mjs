@@ -105,13 +105,21 @@ export class DocumentIngestionPipeline {
     this.logger = logger
   }
 
-  async ingest({ sourcePath, outputRoot, title = path.basename(sourcePath), tags = [], metadata = {} } = {}) {
+  async ingest({ sourcePath, outputRoot, title = path.basename(sourcePath), tags = [], metadata = {}, onProgress } = {}) {
     if (!sourcePath) throw new Error('sourcePath est obligatoire.')
     if (!outputRoot) throw new Error('outputRoot est obligatoire.')
 
+    const progress = (phase, details = {}) => {
+      if (typeof onProgress === 'function') onProgress({ phase, ...details })
+    }
+
+    progress('checksum-started')
     const sourceChecksum = await sha256File(sourcePath)
+    progress('checksum-completed', { sourceChecksum })
     const documentId = sha256(`${sourceChecksum}:${path.resolve(sourcePath)}`).slice(0, 32)
+    progress('extraction-started')
     const extraction = await this.extractor.extract(sourcePath)
+    progress('extraction-completed', { method: extraction.extraction?.method, imageCount: extraction.images?.length ?? 0 })
 
     try {
       return await this.#processExtraction({
@@ -123,6 +131,7 @@ export class DocumentIngestionPipeline {
         title,
         tags,
         metadata,
+        progress,
       })
     } finally {
       if (typeof extraction.cleanup === 'function') {
@@ -133,7 +142,8 @@ export class DocumentIngestionPipeline {
     }
   }
 
-  async #processExtraction({ extraction, sourcePath, sourceChecksum, documentId, outputRoot, title, tags, metadata }) {
+  async #processExtraction({ extraction, sourcePath, sourceChecksum, documentId, outputRoot, title, tags, metadata, progress }) {
+    progress('images-started', { imageCount: extraction.images?.length ?? 0 })
     const imageDescriptions = []
     for (const [index, image] of (extraction.images ?? []).entries()) {
       let description = ''
@@ -153,15 +163,19 @@ export class DocumentIngestionPipeline {
       })
     }
 
+    progress('images-completed', { describedCount: imageDescriptions.filter((image) => image.description).length })
     const enrichmentText = imageDescriptions
       .filter((image) => image.description)
       .map((image) => `[Image ${image.sequence}] ${image.description}`)
       .join('\n\n')
     const searchableText = [extraction.text ?? '', enrichmentText].filter(Boolean).join('\n\n')
+    progress('tagging-started')
     const generatedTags = this.tagger?.generate
       ? await this.tagger.generate({ text: searchableText, title, metadata })
       : extractDeterministicTags(searchableText)
     const normalizedTags = uniqueStrings([...tags, ...generatedTags])
+    progress('tagging-completed', { tags: normalizedTags })
+    progress('chunking-started')
     const chunkValues = chunkText(searchableText)
     const chunks = chunkValues.map((text, index) => ({
       id: deterministicUuid(`${documentId}:${index}:${sha256(text)}`),
@@ -170,9 +184,12 @@ export class DocumentIngestionPipeline {
       checksum: sha256(text),
     }))
 
+    progress('chunking-completed', { chunkCount: chunks.length })
+
     let vectors = []
     let embedding = { status: 'skipped', provider: undefined, vectorCount: 0 }
     if (this.embeddingProvider && chunks.length > 0) {
+      progress('embedding-started', { chunkCount: chunks.length })
       vectors = await this.embeddingProvider.embedBatch(chunks.map((chunk) => chunk.text))
       if (vectors.length !== chunks.length) throw new Error('Le fournisseur d’embeddings a retourné un nombre de vecteurs invalide.')
       embedding = {
@@ -181,6 +198,9 @@ export class DocumentIngestionPipeline {
         vectorCount: vectors.length,
         dimensions: vectors[0]?.length ?? 0,
       }
+      progress('embedding-completed', embedding)
+    } else {
+      progress('embedding-skipped')
     }
 
     const document = {
@@ -195,11 +215,16 @@ export class DocumentIngestionPipeline {
 
     let vectorIndex = { status: 'skipped', pointIds: [] }
     if (this.vectorStore && vectors.length > 0) {
+      progress('vector-index-started')
       vectorIndex = await this.vectorStore.upsert({ document, chunks, vectors })
       embedding.status = vectorIndex.status === 'indexed' ? 'indexed' : embedding.status
       embedding.collection = vectorIndex.collection
+      progress('vector-index-completed', vectorIndex)
+    } else {
+      progress('vector-index-skipped')
     }
 
+    progress('files-started')
     const documentDirectory = path.join(outputRoot, 'documents', documentId)
     await mkdir(documentDirectory, { recursive: true })
     const markdownPath = path.join(documentDirectory, 'document.md')
@@ -244,6 +269,7 @@ export class DocumentIngestionPipeline {
     })
     await writeDocumentIndex(indexPath, nextIndex)
     await writeFile(path.join(outputRoot, 'INDEX.md'), renderDocumentIndexMarkdown(nextIndex), 'utf8')
+    progress('files-completed', { markdownPath, manifestPath, indexPath })
 
     return {
       runId: randomUUID(),
