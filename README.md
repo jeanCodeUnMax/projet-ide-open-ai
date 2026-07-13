@@ -1,85 +1,164 @@
 # IDE Open AI
 
-Application desktop Electron construite autour d’**OpenFox**, avec un gestionnaire MCP gouverné inspiré des capacités décrites pour Windsurf/Cascade.
+Application desktop Electron construite autour d’**OpenFox**, avec MCP gouverné, fondation Agent-to-Agent, réutilisation de la mémoire **Hephaistos-kit** et ingestion RAG multimodale.
 
-> Statut : MVP 0.1.0. Le moteur agentique est OpenFox 2.0.50. Le projet n’est pas affilié à OpenAI, Windsurf, Codeium ou l’équipe OpenFox.
+> Statut : MVP 0.2.0. Le moteur agentique actuel est OpenFox 2.0.50. Le projet n’est pas affilié à OpenAI, Windsurf, Codeium ou l’équipe OpenFox.
 
 ## Fonctionnalités livrées
 
-- lancement et supervision d’OpenFox dans une application Electron ;
-- fenêtre principale utilisant l’interface complète OpenFox ;
+### Desktop et MCP
+
+- lancement et supervision d’OpenFox dans Electron ;
 - profil OpenFox isolé dans les données de l’application ;
 - sélection native du workspace ;
-- gestion des serveurs MCP `stdio` et Streamable HTTP ;
-- test, ajout, suppression et activation outil par outil ;
-- limite stricte de **100 outils MCP actifs** ;
-- import/export d’un fichier `mcp_config.json` contenant `mcpServers` ;
-- interpolation `${env:VARIABLE}` au lancement ;
-- fenêtre de journaux et redémarrage du moteur ;
-- configuration d’empaquetage Windows NSIS, Linux AppImage/DEB et macOS DMG.
+- serveurs MCP `stdio` et Streamable HTTP ;
+- activation outil par outil et limite stricte de 100 outils ;
+- import/export `mcp_config.json` ;
+- interpolation `${env:VARIABLE}` ;
+- journaux et redémarrage du moteur ;
+- empaquetage Windows, Linux et macOS.
+
+### Agent-to-Agent
+
+- validation d’Agent Cards A2A ;
+- registre d’agents et recherche par tags de compétences ;
+- cycle de vie contrôlé des tâches ;
+- messages et artefacts ;
+- client A2A de découverte et délégation ;
+- serveur HTTP local avec découverte, envoi, lecture et annulation de tâches ;
+- Agent Card de l’orchestrateur dans `config/agents/`.
+
+### Hephaistos-kit
+
+- adaptateur HTTP configurable ;
+- réutilisation de la mémoire unifiée avant et après une tâche ;
+- récupération du contexte du workspace ;
+- transmission des événements au watchdog ;
+- aucun second moteur mémoire créé en parallèle lorsque Hephaistos est absent.
+
+### RAG multimodal
+
+- extraction texte Markdown, TXT et JSON ;
+- extraction PDF avec Poppler ;
+- OCR des PDF scannés avec OCRmyPDF ;
+- OCR des images avec Tesseract ;
+- extraction facultative des images PDF ;
+- description des images avec un endpoint vision compatible OpenAI ;
+- enrichissement par tags ;
+- chunking avec chevauchement ;
+- embeddings Mistral ;
+- indexation Qdrant ;
+- génération de `document.md`, `manifest.json`, `index.json` et `INDEX.md`.
 
 ## Prérequis
 
-- Node.js 22 minimum. Node.js 24 est préférable, car le paquet OpenFox audité le demande dans son champ `engines`.
-- npm 10 ou supérieur.
-- Pour certains MCP `stdio` : `npx`, `uvx`, Python ou Docker selon le serveur choisi.
+- Node.js 22 minimum ; Node.js 24 est préférable car OpenFox le demande ;
+- npm 10 ou supérieur ;
+- pour l’OCR local : Poppler, OCRmyPDF et Tesseract avec les langues nécessaires ;
+- Qdrant pour l’index vectoriel ;
+- une clé Mistral pour les embeddings ;
+- un endpoint vision configuré seulement lorsque la description d’images doit sortir de la machine.
 
 ## Installation
 
 ```bash
 git clone https://github.com/jeanCodeUnMax/projet-ide-open-ai.git
 cd projet-ide-open-ai
+git switch agent/a2a-rag-hephaistos
 npm install
+npm run check
 npm start
 ```
 
-Le premier lancement ouvre le dossier **Documents** comme workspace. Utilise `Projet > Ouvrir un workspace…` pour le remplacer.
+## A2A local
 
-## Configuration d’un MCP
+```bash
+npm run a2a:dev
+```
+
+Le serveur écoute par défaut sur `127.0.0.1:43110`.
+
+```text
+GET  /.well-known/agent-card.json
+POST /message:send
+GET  /tasks
+GET  /tasks/{id}
+POST /tasks/{id}:cancel
+```
+
+Exemple :
+
+```bash
+curl -X POST http://127.0.0.1:43110/message:send \
+  -H "Content-Type: application/a2a+json" \
+  -d '{
+    "message": {
+      "role": "ROLE_USER",
+      "messageId": "demo-1",
+      "parts": [{"text": "Prépare l’ingestion RAG du projet"}]
+    }
+  }'
+```
+
+## Connexion à Hephaistos-kit
+
+Les routes réelles de Hephaistos restent configurables, car le projet ne doit pas supposer son API interne.
+
+```bash
+export HEPHAISTOS_BASE_URL=http://127.0.0.1:8787
+export HEPHAISTOS_WORKSPACE_ID=my-workspace
+export HEPHAISTOS_TOKEN=...
+npm run a2a:dev
+```
+
+Contrat d’exemple : `config/hephaistos.example.json`.
+
+## Ingestion d’un document RAG
+
+Sans clé ni Qdrant, le pipeline produit quand même le Markdown, le manifeste, les tags et l’index documentaire. Les embeddings et l’upsert vectoriel sont alors indiqués comme ignorés.
+
+```bash
+npm run rag:ingest -- ./documents/rapport.pdf --workspace . --tag architecture
+```
+
+Avec Mistral et Qdrant :
+
+```bash
+export MISTRAL_API_KEY=...
+export QDRANT_URL=http://127.0.0.1:6333
+npm run rag:ingest -- ./documents/rapport.pdf --workspace .
+```
+
+Pour décrire les images :
+
+```bash
+export VISION_API_URL=https://ton-endpoint/v1/chat/completions
+export VISION_MODEL=ton-modele-vision
+export VISION_API_KEY=...
+```
+
+Les résultats sont créés dans :
+
+```text
+.ide-ai/rag/
+├── index.json
+├── INDEX.md
+└── documents/<document-id>/
+    ├── document.md
+    └── manifest.json
+```
+
+## Configuration MCP
 
 Ouvre `MCP > Gestionnaire MCP…`.
-
-Exemple `stdio` :
 
 ```json
 {
   "name": "filesystem",
   "transport": "stdio",
   "command": "npx",
-  "args": [
-    "-y",
-    "@modelcontextprotocol/server-filesystem",
-    "${env:WORKSPACE_PATH}"
-  ]
+  "args": ["-y", "@modelcontextprotocol/server-filesystem", "${env:WORKSPACE_PATH}"]
 }
-```
-
-Exemple HTTP :
-
-```json
-{
-  "name": "remote",
-  "transport": "http",
-  "url": "https://example.test/mcp",
-  "headers": {
-    "Authorization": "Bearer ${env:MCP_ACCESS_TOKEN}"
-  }
-}
-```
-
-Les variables doivent être présentes dans l’environnement qui lance Electron.
-
-### Windows PowerShell
-
-```powershell
-$env:MCP_ACCESS_TOKEN="secret"
-npm start
-```
-
-### Linux/macOS
-
-```bash
-MCP_ACCESS_TOKEN="secret" npm start
 ```
 
 ## Vérification
@@ -88,36 +167,26 @@ MCP_ACCESS_TOKEN="secret" npm start
 npm run check
 ```
 
-## Construction des installateurs
-
-```bash
-npm run dist:win
-npm run dist:linux
-npm run dist:mac
-```
-
-Les artefacts sont générés dans `release/`. La construction native d’une plateforme doit généralement être exécutée sur cette plateforme.
-
 ## Architecture
 
-Voir :
+- `config/app-schema.json` — source de vérité des services ;
+- `docs/A2A-HEPHAISTOS-RAG.md` — architecture de cette tranche ;
+- `docs/ROADMAP.md` — étapes suivantes ;
+- `docs/ARCHITECTURE.md` — architecture Electron/OpenFox ;
+- `docs/MCP-PARITY.md` — comparaison MCP ;
+- `docs/SECURITY.md` — sécurité ;
+- `docs/DELIVERY.md` — livraison.
 
-- `docs/ARCHITECTURE.md`
-- `docs/MCP-PARITY.md`
-- `docs/SECURITY.md`
-- `docs/DELIVERY.md`
+## Limites actuelles
 
-## Ce qui reste à développer
-
-- transport SSE ;
-- OAuth MCP et stockage sécurisé des jetons ;
-- exposition des `resources` et `prompts` MCP ;
-- marketplace de serveurs vérifiés ;
-- liste blanche administrateur ;
-- signature de code et mise à jour automatique ;
-- intégration plus profonde directement dans un fork complet d’OpenFox.
+- le serveur A2A constitue une fondation compatible avec les concepts v1, pas encore une certification d’interopérabilité complète ;
+- streaming, push notifications, signatures JWS et OAuth A2A restent à développer ;
+- l’executor A2A de démonstration n’est pas encore relié à une session OpenFox ;
+- les routes exactes de Hephaistos doivent être mappées sur son API réelle ;
+- l’interface graphique d’ingestion et de recherche RAG reste à intégrer à Electron.
 
 ## Origine
 
 - OpenFox : `https://github.com/co-l/openfox`
-- Document de comparaison MCP fourni : documentation Windsurf/Cascade MCP.
+- A2A : spécification officielle du projet A2A ;
+- MCP : spécification officielle Model Context Protocol.

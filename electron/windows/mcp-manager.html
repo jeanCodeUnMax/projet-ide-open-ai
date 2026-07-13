@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'none'; img-src 'self' data:">
+  <title>Gestionnaire MCP</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="shell">
+    <div class="header">
+      <div>
+        <h1>Gestionnaire MCP</h1>
+        <p>Configure les serveurs et limite les outils injectés dans le contexte de l’agent.</p>
+      </div>
+      <div class="badge"><strong id="enabled-count">0</strong>/<span id="tool-limit">100</span>&nbsp;outils actifs</div>
+    </div>
+
+    <div class="toolbar">
+      <button id="refresh" class="btn">Actualiser</button>
+      <button id="import" class="btn">Importer JSON</button>
+      <button id="export" class="btn">Exporter JSON</button>
+      <button id="restart" class="btn">Redémarrer OpenFox</button>
+      <button id="toggle-form" class="btn primary">Ajouter un serveur</button>
+    </div>
+
+    <div id="message" class="notice hidden"></div>
+
+    <section id="add-panel" class="panel hidden">
+      <div class="panel-header"><h2>Nouveau serveur MCP</h2></div>
+      <form id="add-form" class="panel-body">
+        <div class="grid">
+          <div class="field">
+            <label for="name">Nom</label>
+            <input id="name" name="name" required placeholder="filesystem">
+          </div>
+          <div class="field">
+            <label for="transport">Transport</label>
+            <select id="transport" name="transport">
+              <option value="stdio">stdio</option>
+              <option value="http">Streamable HTTP</option>
+            </select>
+          </div>
+          <div class="field stdio-field">
+            <label for="command">Commande</label>
+            <input id="command" name="command" placeholder="npx">
+          </div>
+          <div class="field full stdio-field">
+            <label for="args">Arguments — un par ligne</label>
+            <textarea id="args" name="args" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;${env:WORKSPACE_PATH}"></textarea>
+          </div>
+          <div class="field full stdio-field">
+            <label for="env">Variables d’environnement — JSON</label>
+            <textarea id="env" name="env" placeholder='{"API_KEY":"${env:API_KEY}"}'></textarea>
+          </div>
+          <div class="field full http-field hidden">
+            <label for="url">URL HTTP</label>
+            <input id="url" name="url" placeholder="https://serveur.example/mcp">
+          </div>
+          <div class="field full http-field hidden">
+            <label for="headers">En-têtes HTTP — JSON</label>
+            <textarea id="headers" name="headers" placeholder='{"Authorization":"Bearer ${env:MCP_TOKEN}"}'></textarea>
+          </div>
+          <div class="field full">
+            <div class="help">Les placeholders <code>${env:VARIABLE}</code> sont résolus uniquement au lancement. Les valeurs secrètes ne sont pas écrites dans le fichier canonique exporté.</div>
+          </div>
+        </div>
+        <div class="toolbar" style="margin-top:16px;margin-bottom:0">
+          <button id="test-server" type="button" class="btn">Tester</button>
+          <button type="submit" class="btn primary">Ajouter</button>
+          <button id="cancel-add" type="button" class="btn">Annuler</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header"><h2>Serveurs configurés</h2><span id="server-count" class="server-meta">0 serveur</span></div>
+      <div id="servers"><div class="empty">Chargement…</div></div>
+    </section>
+  </main>
+  <script type="module" src="./mcp-manager.js"></script>
+</body>
+</html>

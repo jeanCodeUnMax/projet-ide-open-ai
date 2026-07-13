@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'none'">
+  <title>Journaux OpenFox</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="toolbar" style="position:sticky;top:0;background:#0c0f14;padding:14px;margin:0;border-bottom:1px solid #293242">
+    <button id="refresh" class="btn">Actualiser</button>
+    <button id="restart" class="btn">Redémarrer OpenFox</button>
+  </div>
+  <pre id="logs" class="logs">Chargement…</pre>
+  <script type="module" src="./logs.js"></script>
+</body>
+</html>

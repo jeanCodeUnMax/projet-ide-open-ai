@@ -1,0 +1,12 @@
+{
+  "baseUrl": "http://127.0.0.1:8787",
+  "workspaceId": "my-workspace",
+  "timeoutMs": 12000,
+  "endpoints": {
+    "health": "/health",
+    "recall": "/memory/search",
+    "remember": "/memory/upsert",
+    "context": "/memory/context",
+    "watchdog": "/watchdog/events"
+  }
+}

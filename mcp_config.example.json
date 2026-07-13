@@ -1,0 +1,24 @@
+{
+  "toolLimit": 100,
+  "mcpServers": {
+    "filesystem": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "${env:WORKSPACE_PATH}"
+      ],
+      "env": {},
+      "disabledTools": []
+    },
+    "remote-example": {
+      "transport": "http",
+      "url": "https://example.test/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:MCP_ACCESS_TOKEN}"
+      },
+      "disabledTools": []
+    }
+  }
+}

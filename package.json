@@ -1,0 +1,61 @@
+{
+  "name": "projet-ide-open-ai",
+  "version": "0.2.0",
+  "description": "IDE agentique Electron basé sur OpenFox avec MCP, A2A, Hephaistos et ingestion RAG multimodale.",
+  "type": "module",
+  "main": "electron/main.mjs",
+  "author": "Jean Sébastien <webmanhtc@gmail.com>",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "check": "node scripts/smoke-check.mjs && node --test",
+    "a2a:dev": "node scripts/a2a-dev-server.mjs",
+    "rag:ingest": "node scripts/ingest-document.mjs",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win nsis",
+    "dist:linux": "electron-builder --linux AppImage deb",
+    "dist:mac": "electron-builder --mac dmg"
+  },
+  "dependencies": {
+    "openfox": "2.0.50"
+  },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "build": {
+    "appId": "ai.open.ide",
+    "productName": "IDE Open AI",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "config/**/*",
+      "package.json",
+      "README.md",
+      "LICENSE",
+      "NOTICE"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.mjs"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Development"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.developer-tools"
+    }
+  }
+}
