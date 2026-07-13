@@ -74,7 +74,7 @@ Application desktop Electron construite autour d’**OpenFox**, avec MCP gouvern
 ```bash
 git clone https://github.com/jeanCodeUnMax/projet-ide-open-ai.git
 cd projet-ide-open-ai
-git switch agent/a2a-rag-hephaistos
+git switch agent/ui-agents-rag
 npm install
 npm run check
 npm start
@@ -177,12 +177,13 @@ Ouvre `MCP > Gestionnaire MCP…`.
 npm run check
 ```
 
-## Architecture
+## Architecture et pilotage
 
 - `config/app-schema.json` — source de vérité des services ;
+- `docs/PROJECT-TRACKER.md` — état global, reprise, risques, backlog et trajectoire V1–V4 ;
 - `docs/A2A-HEPHAISTOS-RAG.md` — architecture du noyau ;
 - `docs/AGENTS-RAG-UI.md` — interface Agents et Knowledge ;
-- `docs/ROADMAP.md` — étapes suivantes ;
+- `docs/ROADMAP.md` — étapes techniques suivantes ;
 - `docs/ARCHITECTURE.md` — architecture Electron/OpenFox ;
 - `docs/MCP-PARITY.md` — comparaison MCP ;
 - `docs/SECURITY.md` — sécurité ;
