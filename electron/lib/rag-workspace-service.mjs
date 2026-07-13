@@ -12,6 +12,7 @@ import {
 
 const SUPPORTED_EXTENSIONS = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.tif', '.tiff', '.md', '.txt', '.json'])
 const MAX_BATCH_FILES = 50
+const MAX_SEARCH_LIMIT = 50
 
 function tokenize(value) {
   return String(value ?? '')
@@ -53,10 +54,29 @@ function reciprocalRankFusion(resultSets, k = 60) {
       const current = fused.get(key) ?? { ...result, score: 0, sources: [] }
       current.score += 1 / (k + rank + 1)
       current.sources.push(setIndex === 0 ? 'lexical' : 'vector')
+      if (!current.citation && result.citation) current.citation = structuredClone(result.citation)
+      if (!current.text && result.text) current.text = result.text
+      if (!current.snippet && result.snippet) current.snippet = result.snippet
+      if (result.vectorScore !== undefined) current.vectorScore = result.vectorScore
       fused.set(key, current)
     })
   })
   return [...fused.values()].sort((a, b) => b.score - a.score)
+}
+
+function isPathInside(root, target) {
+  const normalizedRoot = path.resolve(root)
+  const normalizedTarget = path.resolve(target)
+  return normalizedTarget === normalizedRoot || normalizedTarget.startsWith(`${normalizedRoot}${path.sep}`)
+}
+
+function safeResolve(root, relativePath) {
+  if (typeof relativePath !== 'string' || path.isAbsolute(relativePath)) {
+    throw new Error('Chemin RAG relatif invalide.')
+  }
+  const target = path.resolve(root, relativePath)
+  if (!isPathInside(root, target)) throw new Error('Chemin RAG hors du workspace autorisé.')
+  return target
 }
 
 async function validateSourcePath(sourcePath) {
@@ -73,13 +93,49 @@ async function validateSourcePath(sourcePath) {
 }
 
 async function loadManifest(outputRoot, entry) {
-  const manifestPath = path.resolve(outputRoot, entry.manifestPath)
   try {
+    const manifestPath = safeResolve(outputRoot, entry.manifestPath)
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
     return { manifestPath, manifest }
   } catch {
-    return { manifestPath, manifest: undefined }
+    return { manifestPath: undefined, manifest: undefined }
   }
+}
+
+function normalizeCitation(source, { entry, chunk } = {}) {
+  const citation = source && typeof source === 'object' ? structuredClone(source) : {}
+  citation.documentId ??= entry?.id
+  citation.title ??= entry?.title
+  citation.sourcePath ??= entry?.sourcePath
+  citation.sourceChecksum ??= entry?.sourceChecksum
+  citation.chunkId ??= chunk?.id
+  citation.chunkIndex ??= chunk?.index
+  citation.kind ??= 'text'
+  if (!citation.pageStart && Number.isInteger(chunk?.page)) citation.pageStart = chunk.page
+  if (!citation.pageEnd && citation.pageStart) citation.pageEnd = citation.pageStart
+  citation.label = formatCitationLabel(citation)
+  return citation
+}
+
+function formatCitationLabel(citation = {}) {
+  const title = citation.title ?? citation.documentId ?? 'Document'
+  let location = 'emplacement non précisé'
+  if (citation.pageStart) {
+    location = citation.pageEnd && citation.pageEnd !== citation.pageStart
+      ? `pages ${citation.pageStart}-${citation.pageEnd}`
+      : `page ${citation.pageStart}`
+  }
+  if (citation.kind === 'image') {
+    location += `, image ${citation.imageSequence ?? citation.imageId ?? '?'}`
+  }
+  const chunk = citation.chunkIndex !== undefined ? `, chunk ${citation.chunkIndex}` : ''
+  return `${title} — ${location}${chunk}`
+}
+
+function normalizeLimit(value) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 12
+  return Math.max(1, Math.min(MAX_SEARCH_LIMIT, Math.trunc(parsed)))
 }
 
 export class RagWorkspaceService extends EventEmitter {
@@ -137,6 +193,7 @@ export class RagWorkspaceService extends EventEmitter {
       capabilities: {
         embeddings: Boolean(this.embeddingProvider),
         vectorSearch: Boolean(this.embeddingProvider && this.vectorStore?.search),
+        preciseCitations: true,
       },
     }
   }
@@ -191,6 +248,7 @@ export class RagWorkspaceService extends EventEmitter {
   async search(query, { limit = 12 } = {}) {
     const value = String(query ?? '').trim()
     if (!value) return { query: value, results: [], mode: 'none' }
+    const safeLimit = normalizeLimit(limit)
     const queryTokens = tokenize(value)
     const index = await readDocumentIndex(path.join(this.outputRoot, 'index.json'))
     const lexicalResults = []
@@ -199,6 +257,7 @@ export class RagWorkspaceService extends EventEmitter {
       const { manifest } = await loadManifest(this.outputRoot, entry)
       const chunks = manifest?.chunks ?? []
       for (const chunk of chunks) {
+        const citation = normalizeCitation(chunk.citation, { entry, chunk })
         const candidate = {
           documentId: entry.id,
           chunkId: chunk.id,
@@ -206,6 +265,7 @@ export class RagWorkspaceService extends EventEmitter {
           title: entry.title,
           tags: entry.tags ?? [],
           text: chunk.text,
+          citation,
           searchText: `${entry.title ?? ''} ${(entry.tags ?? []).join(' ')} ${chunk.text ?? ''}`,
           documentPath: entry.documentPath,
           manifestPath: entry.manifestPath,
@@ -224,25 +284,37 @@ export class RagWorkspaceService extends EventEmitter {
     if (this.embeddingProvider && this.vectorStore?.search) {
       try {
         const [vector] = await this.embeddingProvider.embedBatch([value])
-        vectorResults = await this.vectorStore.search(vector, { limit: Math.max(limit * 2, 20) })
+        vectorResults = await this.vectorStore.search(vector, { limit: Math.max(safeLimit * 2, 20) })
       } catch (error) {
         this.logger.warn?.(`Recherche vectorielle indisponible: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
 
     const fused = reciprocalRankFusion([
-      lexicalResults.slice(0, Math.max(limit * 2, 20)),
-      vectorResults.map((result) => ({
-        documentId: result.payload?.documentId,
-        chunkId: String(result.id),
-        chunkIndex: result.payload?.chunkIndex,
-        title: result.payload?.title,
-        tags: result.payload?.tags ?? [],
-        text: result.payload?.text,
-        snippet: snippet(result.payload?.text, queryTokens),
-        vectorScore: result.score,
-      })),
-    ]).slice(0, limit)
+      lexicalResults.slice(0, Math.max(safeLimit * 2, 20)),
+      vectorResults.map((result) => {
+        const citation = normalizeCitation(result.payload?.citation, {
+          entry: {
+            id: result.payload?.documentId,
+            title: result.payload?.title,
+            sourcePath: result.payload?.sourcePath,
+            sourceChecksum: result.payload?.sourceChecksum,
+          },
+          chunk: { id: String(result.id), index: result.payload?.chunkIndex },
+        })
+        return {
+          documentId: result.payload?.documentId,
+          chunkId: String(result.id),
+          chunkIndex: result.payload?.chunkIndex,
+          title: result.payload?.title,
+          tags: result.payload?.tags ?? [],
+          text: result.payload?.text,
+          snippet: snippet(result.payload?.text, queryTokens),
+          citation,
+          vectorScore: result.score,
+        }
+      }),
+    ]).slice(0, safeLimit)
 
     return {
       query: value,
@@ -252,4 +324,12 @@ export class RagWorkspaceService extends EventEmitter {
   }
 }
 
-export { SUPPORTED_EXTENSIONS, validateSourcePath }
+export {
+  MAX_BATCH_FILES,
+  MAX_SEARCH_LIMIT,
+  SUPPORTED_EXTENSIONS,
+  formatCitationLabel,
+  normalizeCitation,
+  safeResolve,
+  validateSourcePath,
+}
