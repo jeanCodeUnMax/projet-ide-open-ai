@@ -2,7 +2,7 @@
 
 Application desktop Electron construite autour d’**OpenFox**, avec MCP gouverné, fondation Agent-to-Agent, réutilisation de la mémoire **Hephaistos-kit** et ingestion RAG multimodale.
 
-> Statut : MVP 0.2.0. Le moteur agentique actuel est OpenFox 2.0.50. Le projet n’est pas affilié à OpenAI, Windsurf, Codeium ou l’équipe OpenFox.
+> Statut : MVP 0.3.0. Le moteur agentique actuel est OpenFox 2.0.50. Le projet n’est pas affilié à OpenAI, Windsurf, Codeium ou l’équipe OpenFox.
 
 ## Fonctionnalités livrées
 
@@ -27,6 +27,16 @@ Application desktop Electron construite autour d’**OpenFox**, avec MCP gouvern
 - client A2A de découverte et délégation ;
 - serveur HTTP local avec découverte, envoi, lecture et annulation de tâches ;
 - Agent Card de l’orchestrateur dans `config/agents/`.
+
+### Interface Agents et Knowledge
+
+- panneau Electron accessible par `AI OS > Agents et Knowledge…` ;
+- registre persistant d’Agent Cards par workspace ;
+- découverte, activation, rafraîchissement et suppression d’agents distants ;
+- glisser-déposer de documents dans le pipeline RAG ;
+- progression détaillée OCR, vision, tags, embeddings et indexation ;
+- inventaire des documents indexés ;
+- recherche lexicale locale et fusion vectorielle Qdrant lorsqu’elle est configurée.
 
 ### Hephaistos-kit
 
@@ -64,7 +74,7 @@ Application desktop Electron construite autour d’**OpenFox**, avec MCP gouvern
 ```bash
 git clone https://github.com/jeanCodeUnMax/projet-ide-open-ai.git
 cd projet-ide-open-ai
-git switch agent/a2a-rag-hephaistos
+git switch agent/ui-agents-rag
 npm install
 npm run check
 npm start
@@ -167,11 +177,13 @@ Ouvre `MCP > Gestionnaire MCP…`.
 npm run check
 ```
 
-## Architecture
+## Architecture et pilotage
 
 - `config/app-schema.json` — source de vérité des services ;
-- `docs/A2A-HEPHAISTOS-RAG.md` — architecture de cette tranche ;
-- `docs/ROADMAP.md` — étapes suivantes ;
+- `docs/PROJECT-TRACKER.md` — état global, reprise, risques, backlog et trajectoire V1–V4 ;
+- `docs/A2A-HEPHAISTOS-RAG.md` — architecture du noyau ;
+- `docs/AGENTS-RAG-UI.md` — interface Agents et Knowledge ;
+- `docs/ROADMAP.md` — étapes techniques suivantes ;
 - `docs/ARCHITECTURE.md` — architecture Electron/OpenFox ;
 - `docs/MCP-PARITY.md` — comparaison MCP ;
 - `docs/SECURITY.md` — sécurité ;
@@ -183,7 +195,8 @@ npm run check
 - streaming, push notifications, signatures JWS et OAuth A2A restent à développer ;
 - l’executor A2A de démonstration n’est pas encore relié à une session OpenFox ;
 - les routes exactes de Hephaistos doivent être mappées sur son API réelle ;
-- l’interface graphique d’ingestion et de recherche RAG reste à intégrer à Electron.
+- le branchement de l’executor A2A sur une session OpenFox réelle reste à réaliser ;
+- la configuration visuelle détaillée de Hephaistos reste à mapper sur son contrat API réel.
 
 ## Origine
 
