@@ -1,16 +1,28 @@
 import { EventEmitter } from 'node:events'
 import { spawn, spawnSync } from 'node:child_process'
-import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { appendFile, mkdir } from 'node:fs/promises'
+import { access, appendFile, mkdir } from 'node:fs/promises'
 import { ensureOpenFoxBootstrap, syncCanonicalMcpToOpenFox } from './config-store.mjs'
 
-const require = createRequire(import.meta.url)
+export async function locateOpenFoxCli() {
+  let serverEntry
+  try {
+    serverEntry = fileURLToPath(import.meta.resolve('openfox'))
+  } catch (error) {
+    throw new Error(
+      `Impossible de résoudre le paquet OpenFox en mode ESM. Réinstalle les dépendances avec npm install. ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
 
-function locateOpenFoxCli() {
-  const serverEntry = require.resolve('openfox')
   const packageRoot = path.resolve(path.dirname(serverEntry), '..', '..')
-  return path.join(packageRoot, 'dist', 'cli', 'index.js')
+  const cliPath = path.join(packageRoot, 'dist', 'cli', 'index.js')
+  try {
+    await access(cliPath)
+  } catch {
+    throw new Error(`CLI OpenFox introuvable: ${cliPath}. Réinstalle les dépendances avec npm install.`)
+  }
+  return cliPath
 }
 
 function resolveNodeBinary() {
@@ -48,7 +60,7 @@ export class OpenFoxRuntime extends EventEmitter {
       WORKSPACE_PATH: this.workspace,
     })
 
-    const cliPath = locateOpenFoxCli()
+    const cliPath = await locateOpenFoxCli()
     const nodeBinary = resolveNodeBinary()
     const env = {
       ...process.env,

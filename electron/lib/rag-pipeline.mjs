@@ -20,6 +20,10 @@ function uniqueStrings(values) {
   return [...new Set(values.filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim()))]
 }
 
+function positiveInteger(value) {
+  return Number.isInteger(value) && value > 0 ? value : undefined
+}
+
 export function deterministicUuid(value) {
   const bytes = Buffer.from(sha256(value).slice(0, 32), 'hex')
   bytes[6] = (bytes[6] & 0x0f) | 0x50
@@ -73,22 +77,116 @@ export function extractDeterministicTags(text, { limit = 12, stopWords = DEFAULT
     .map(([token]) => token)
 }
 
-function renderMarkdown({ title, sourcePath, text, imageDescriptions, tags }) {
+function normalizePages(extraction) {
+  const supplied = Array.isArray(extraction.pages)
+    ? extraction.pages
+      .map((page, index) => ({
+        number: positiveInteger(page?.number) ?? index + 1,
+        text: typeof page?.text === 'string' ? page.text.trim() : '',
+      }))
+      .filter((page) => page.text)
+    : []
+  if (supplied.length > 0) return supplied
+  const text = typeof extraction.text === 'string' ? extraction.text.trim() : ''
+  return text ? [{ number: 1, text }] : []
+}
+
+function createCitation({ document, chunkId, chunkIndex, kind, pageStart, pageEnd, image }) {
+  const citation = {
+    id: deterministicUuid(`${document.id}:citation:${chunkId}`),
+    documentId: document.id,
+    title: document.title,
+    sourcePath: document.sourcePath,
+    sourceChecksum: document.sourceChecksum,
+    chunkId,
+    chunkIndex,
+    kind,
+  }
+  if (positiveInteger(pageStart)) citation.pageStart = pageStart
+  if (positiveInteger(pageEnd)) citation.pageEnd = pageEnd
+  if (image) {
+    citation.imageId = image.id
+    citation.imageSequence = image.sequence
+    citation.imageSource = image.source
+  }
+  return citation
+}
+
+export function buildProvenanceChunks({ document, pages, imageDescriptions, maxChars = 2400, overlapChars = 300 } = {}) {
+  if (!document?.id) throw new Error('document.id est obligatoire pour créer les chunks de provenance.')
+  const chunks = []
+  let index = 0
+
+  for (const page of pages ?? []) {
+    for (const text of chunkText(page.text ?? '', { maxChars, overlapChars })) {
+      const id = deterministicUuid(`${document.id}:text:${page.number}:${index}:${sha256(text)}`)
+      chunks.push({
+        id,
+        index,
+        text,
+        checksum: sha256(text),
+        citation: createCitation({
+          document,
+          chunkId: id,
+          chunkIndex: index,
+          kind: 'text',
+          pageStart: page.number,
+          pageEnd: page.number,
+        }),
+      })
+      index += 1
+    }
+  }
+
+  for (const image of imageDescriptions ?? []) {
+    if (!image.description?.trim()) continue
+    const text = `[Image ${image.sequence}] ${image.description.trim()}`
+    const id = deterministicUuid(`${document.id}:image:${image.id}:${sha256(text)}`)
+    chunks.push({
+      id,
+      index,
+      text,
+      checksum: sha256(text),
+      citation: createCitation({
+        document,
+        chunkId: id,
+        chunkIndex: index,
+        kind: 'image',
+        pageStart: image.page,
+        pageEnd: image.page,
+        image,
+      }),
+    })
+    index += 1
+  }
+
+  return chunks
+}
+
+function renderMarkdown({ title, sourcePath, pages, imageDescriptions, tags, sourceChecksum }) {
   const lines = [
     '---',
     `title: ${JSON.stringify(title)}`,
     `source: ${JSON.stringify(sourcePath)}`,
+    `source_checksum: ${JSON.stringify(sourceChecksum)}`,
     `tags: [${tags.map((tag) => JSON.stringify(tag)).join(', ')}]`,
     '---',
     '',
     `# ${title}`,
     '',
-    text.trim(),
   ]
+
+  const multiplePages = pages.length > 1
+  for (const page of pages) {
+    if (multiplePages) lines.push(`## Page ${page.number}`, '')
+    lines.push(page.text.trim(), '')
+  }
+
   if (imageDescriptions.length > 0) {
-    lines.push('', '## Descriptions des images', '')
+    lines.push('## Descriptions des images', '')
     for (const image of imageDescriptions) {
-      lines.push(`### Image ${image.sequence}`, '', image.description || '_Description indisponible._', '')
+      const page = positiveInteger(image.page) ? ` — page ${image.page}` : ''
+      lines.push(`### Image ${image.sequence}${page}`, '', image.description || '_Description indisponible._', '')
     }
   }
   return `${lines.join('\n').trim()}\n`
@@ -105,13 +203,25 @@ export class DocumentIngestionPipeline {
     this.logger = logger
   }
 
-  async ingest({ sourcePath, outputRoot, title = path.basename(sourcePath), tags = [], metadata = {} } = {}) {
+  async ingest({ sourcePath, outputRoot, title = path.basename(sourcePath), tags = [], metadata = {}, onProgress } = {}) {
     if (!sourcePath) throw new Error('sourcePath est obligatoire.')
     if (!outputRoot) throw new Error('outputRoot est obligatoire.')
 
+    const progress = (phase, details = {}) => {
+      if (typeof onProgress === 'function') onProgress({ phase, ...details })
+    }
+
+    progress('checksum-started')
     const sourceChecksum = await sha256File(sourcePath)
+    progress('checksum-completed', { sourceChecksum })
     const documentId = sha256(`${sourceChecksum}:${path.resolve(sourcePath)}`).slice(0, 32)
+    progress('extraction-started')
     const extraction = await this.extractor.extract(sourcePath)
+    progress('extraction-completed', {
+      method: extraction.extraction?.method,
+      imageCount: extraction.images?.length ?? 0,
+      pageCount: extraction.pages?.length ?? 0,
+    })
 
     try {
       return await this.#processExtraction({
@@ -123,6 +233,7 @@ export class DocumentIngestionPipeline {
         title,
         tags,
         metadata,
+        progress,
       })
     } finally {
       if (typeof extraction.cleanup === 'function') {
@@ -133,7 +244,19 @@ export class DocumentIngestionPipeline {
     }
   }
 
-  async #processExtraction({ extraction, sourcePath, sourceChecksum, documentId, outputRoot, title, tags, metadata }) {
+  async #processExtraction({ extraction, sourcePath, sourceChecksum, documentId, outputRoot, title, tags, metadata, progress }) {
+    const pages = normalizePages(extraction)
+    const document = {
+      id: documentId,
+      title,
+      sourcePath: path.resolve(sourcePath),
+      sourceChecksum,
+      mimeType: extraction.mimeType,
+      tags: [],
+      metadata: structuredClone(metadata),
+    }
+
+    progress('images-started', { imageCount: extraction.images?.length ?? 0 })
     const imageDescriptions = []
     for (const [index, image] of (extraction.images ?? []).entries()) {
       let description = ''
@@ -146,33 +269,39 @@ export class DocumentIngestionPipeline {
       }
       imageDescriptions.push({
         id: `${documentId}-image-${index + 1}`,
-        sequence: index + 1,
-        page: image.page,
+        sequence: image.sequence ?? index + 1,
+        page: positiveInteger(image.page),
         description,
         source: image.source,
       })
     }
 
-    const enrichmentText = imageDescriptions
-      .filter((image) => image.description)
-      .map((image) => `[Image ${image.sequence}] ${image.description}`)
-      .join('\n\n')
-    const searchableText = [extraction.text ?? '', enrichmentText].filter(Boolean).join('\n\n')
+    progress('images-completed', { describedCount: imageDescriptions.filter((image) => image.description).length })
+    const searchableText = [
+      ...pages.map((page) => page.text),
+      ...imageDescriptions.filter((image) => image.description).map((image) => image.description),
+    ].filter(Boolean).join('\n\n')
+
+    progress('tagging-started')
     const generatedTags = this.tagger?.generate
       ? await this.tagger.generate({ text: searchableText, title, metadata })
       : extractDeterministicTags(searchableText)
     const normalizedTags = uniqueStrings([...tags, ...generatedTags])
-    const chunkValues = chunkText(searchableText)
-    const chunks = chunkValues.map((text, index) => ({
-      id: deterministicUuid(`${documentId}:${index}:${sha256(text)}`),
-      index,
-      text,
-      checksum: sha256(text),
-    }))
+    document.tags = normalizedTags
+    progress('tagging-completed', { tags: normalizedTags })
+
+    progress('chunking-started')
+    const chunks = buildProvenanceChunks({ document, pages, imageDescriptions })
+    progress('chunking-completed', {
+      chunkCount: chunks.length,
+      citationCount: chunks.length,
+      pageCount: pages.length,
+    })
 
     let vectors = []
     let embedding = { status: 'skipped', provider: undefined, vectorCount: 0 }
     if (this.embeddingProvider && chunks.length > 0) {
+      progress('embedding-started', { chunkCount: chunks.length })
       vectors = await this.embeddingProvider.embedBatch(chunks.map((chunk) => chunk.text))
       if (vectors.length !== chunks.length) throw new Error('Le fournisseur d’embeddings a retourné un nombre de vecteurs invalide.')
       embedding = {
@@ -181,25 +310,23 @@ export class DocumentIngestionPipeline {
         vectorCount: vectors.length,
         dimensions: vectors[0]?.length ?? 0,
       }
-    }
-
-    const document = {
-      id: documentId,
-      title,
-      sourcePath: path.resolve(sourcePath),
-      sourceChecksum,
-      mimeType: extraction.mimeType,
-      tags: normalizedTags,
-      metadata: structuredClone(metadata),
+      progress('embedding-completed', embedding)
+    } else {
+      progress('embedding-skipped')
     }
 
     let vectorIndex = { status: 'skipped', pointIds: [] }
     if (this.vectorStore && vectors.length > 0) {
+      progress('vector-index-started')
       vectorIndex = await this.vectorStore.upsert({ document, chunks, vectors })
       embedding.status = vectorIndex.status === 'indexed' ? 'indexed' : embedding.status
       embedding.collection = vectorIndex.collection
+      progress('vector-index-completed', vectorIndex)
+    } else {
+      progress('vector-index-skipped')
     }
 
+    progress('files-started')
     const documentDirectory = path.join(outputRoot, 'documents', documentId)
     await mkdir(documentDirectory, { recursive: true })
     const markdownPath = path.join(documentDirectory, 'document.md')
@@ -207,19 +334,25 @@ export class DocumentIngestionPipeline {
     await writeFile(markdownPath, renderMarkdown({
       title,
       sourcePath: document.sourcePath,
-      text: extraction.text ?? '',
+      sourceChecksum,
+      pages,
       imageDescriptions,
       tags: normalizedTags,
     }), 'utf8')
 
     const manifest = {
-      schemaVersion: '1.0.0',
-      pipelineVersion: '0.2.0',
+      schemaVersion: '1.1.0',
+      pipelineVersion: '0.4.0',
       ingestedAt: new Date().toISOString(),
       document,
-      extraction: extraction.extraction,
+      extraction: {
+        ...structuredClone(extraction.extraction ?? {}),
+        pageCount: pages.length,
+      },
+      pages,
       chunks,
       images: imageDescriptions,
+      citationSchemaVersion: '1.0.0',
       embedding,
       vectorIndex,
     }
@@ -234,7 +367,9 @@ export class DocumentIngestionPipeline {
       sourceChecksum,
       mimeType: extraction.mimeType,
       tags: normalizedTags,
+      pageCount: pages.length,
       chunkCount: chunks.length,
+      citationCount: chunks.length,
       imageCount: imageDescriptions.length,
       embedding,
       vectorCollection: vectorIndex.collection,
@@ -244,6 +379,7 @@ export class DocumentIngestionPipeline {
     })
     await writeDocumentIndex(indexPath, nextIndex)
     await writeFile(path.join(outputRoot, 'INDEX.md'), renderDocumentIndexMarkdown(nextIndex), 'utf8')
+    progress('files-completed', { markdownPath, manifestPath, indexPath })
 
     return {
       runId: randomUUID(),
@@ -252,7 +388,9 @@ export class DocumentIngestionPipeline {
       manifestPath,
       indexPath,
       tags: normalizedTags,
+      pageCount: pages.length,
       chunkCount: chunks.length,
+      citationCount: chunks.length,
       imageCount: imageDescriptions.length,
       embedding,
     }

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'none'; img-src 'self' data:">
+  <title>Agents et Knowledge</title>
+  <link rel="stylesheet" href="./agent-rag-dashboard.css">
+</head>
+<body>
+  <main class="workspace-shell">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">AI Development Operating System</p>
+        <h1>Agents et Knowledge</h1>
+        <p class="subtitle">Orchestration A2A, mémoire Hephaistos et corpus RAG multimodal du workspace.</p>
+      </div>
+      <button id="refresh-all" class="button secondary">Actualiser</button>
+    </header>
+
+    <section id="status-grid" class="status-grid" aria-label="État des services">
+      <article class="status-card"><span>Workspace</span><strong id="workspace-status">—</strong></article>
+      <article class="status-card"><span>Hephaistos</span><strong id="hephaistos-status">—</strong></article>
+      <article class="status-card"><span>Embeddings</span><strong id="embedding-status">—</strong></article>
+      <article class="status-card"><span>Recherche</span><strong id="search-status">—</strong></article>
+    </section>
+
+    <nav class="tabs" aria-label="Sections">
+      <button class="tab active" data-tab="agents">Agents</button>
+      <button class="tab" data-tab="ingestion">Ingestion RAG</button>
+      <button class="tab" data-tab="search">Recherche</button>
+    </nav>
+
+    <div id="notice" class="notice hidden" role="status"></div>
+
+    <section id="tab-agents" class="tab-panel active">
+      <div class="section-heading">
+        <div><h2>Registre Agent-to-Agent</h2><p>Découvre des Agent Cards distantes et active uniquement les agents nécessaires.</p></div>
+        <span id="agent-count" class="pill">0 agent</span>
+      </div>
+      <form id="agent-form" class="inline-form">
+        <label class="grow">URL de l’agent A2A
+          <input id="agent-url" type="url" required placeholder="http://127.0.0.1:43110">
+        </label>
+        <button id="discover-agent" type="button" class="button secondary">Tester</button>
+        <button type="submit" class="button primary">Ajouter</button>
+      </form>
+      <div id="agent-preview" class="preview hidden"></div>
+      <div id="agents-list" class="cards-list"></div>
+    </section>
+
+    <section id="tab-ingestion" class="tab-panel">
+      <div class="section-heading">
+        <div><h2>Ingestion documentaire</h2><p>PDF, images, Markdown, texte et JSON. OCR, descriptions visuelles, tags, chunks et index.</p></div>
+        <button id="choose-files" class="button secondary">Choisir des fichiers</button>
+      </div>
+
+      <div id="drop-zone" class="drop-zone" tabindex="0">
+        <strong>Dépose les documents ici</strong>
+        <span>ou utilise « Choisir des fichiers »</span>
+      </div>
+
+      <div class="ingestion-controls">
+        <label class="grow">Tags supplémentaires
+          <input id="ingestion-tags" placeholder="architecture, sécurité, spécification">
+        </label>
+        <button id="clear-files" class="button ghost">Vider</button>
+        <button id="start-ingestion" class="button primary" disabled>Indexer les documents</button>
+      </div>
+
+      <div id="selected-files" class="selected-files"><p class="empty-state">Aucun fichier sélectionné.</p></div>
+
+      <div id="progress-panel" class="progress-panel hidden">
+        <div class="progress-header"><strong id="progress-title">Ingestion</strong><span id="progress-percent">0 %</span></div>
+        <div class="progress-track"><div id="progress-bar" class="progress-bar"></div></div>
+        <p id="progress-detail" class="progress-detail"></p>
+      </div>
+
+      <div class="section-heading compact">
+        <div><h3>Documents indexés</h3><p>Index machine <code>index.json</code> et vue lisible <code>INDEX.md</code>.</p></div>
+        <button id="reveal-index" class="button ghost">Afficher le dossier</button>
+      </div>
+      <div id="documents-list" class="documents-table"></div>
+    </section>
+
+    <section id="tab-search" class="tab-panel">
+      <div class="section-heading">
+        <div><h2>Recherche Knowledge</h2><p>Recherche lexicale locale et fusion vectorielle Qdrant lorsqu’elle est configurée.</p></div>
+      </div>
+      <form id="search-form" class="search-form">
+        <input id="search-query" required placeholder="Que dit le corpus sur l’orchestration des agents ?">
+        <button class="button primary" type="submit">Rechercher</button>
+      </form>
+      <div id="search-meta" class="search-meta"></div>
+      <div id="search-results" class="search-results"><p class="empty-state">Saisis une recherche pour interroger le corpus.</p></div>
+    </section>
+  </main>
+  <script type="module" src="./agent-rag-dashboard.js"></script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 {
   "name": "IDE Open AI Orchestrator",
-  "description": "Orchestre les agents du workspace, délègue les tâches et réutilise la mémoire unifiée Hephaistos lorsqu’elle est disponible.",
-  "version": "0.2.0",
+  "description": "Orchestre les agents du workspace, délègue les tâches vers OpenFox et réutilise la mémoire unifiée Hephaistos lorsqu’elle est disponible.",
+  "version": "0.4.0",
   "supportedInterfaces": [
     {
       "url": "http://127.0.0.1:43110",
@@ -26,10 +26,19 @@
       "outputModes": ["text/plain", "application/json"]
     },
     {
+      "id": "openfox-session-execution",
+      "name": "Exécution OpenFox",
+      "description": "Crée ou réutilise une session OpenFox réelle pour exécuter une tâche A2A dans le workspace.",
+      "tags": ["openfox", "session", "coding", "execution", "a2a"],
+      "examples": ["Analyse ce workspace dans une session OpenFox et retourne le résultat."],
+      "inputModes": ["text/plain", "application/json"],
+      "outputModes": ["text/plain", "application/json"]
+    },
+    {
       "id": "rag-ingestion",
       "name": "Ingestion RAG multimodale",
-      "description": "Coordonne OCR PDF, description d’images, tags, chunks, embeddings et index vectoriel.",
-      "tags": ["rag", "ocr", "vision", "embeddings", "qdrant"],
+      "description": "Coordonne OCR PDF, description d’images, tags, chunks, citations précises, embeddings et index vectoriel.",
+      "tags": ["rag", "ocr", "vision", "embeddings", "qdrant", "citations"],
       "examples": ["Indexe ce PDF scanné et décris ses graphiques."],
       "inputModes": ["application/pdf", "image/png", "image/jpeg", "text/markdown"],
       "outputModes": ["text/markdown", "application/json"]

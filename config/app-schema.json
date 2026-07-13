@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "0.2.0",
+  "schemaVersion": "0.4.0",
   "application": {
     "id": "ai.open.ide",
     "name": "IDE Open AI",
@@ -8,13 +8,18 @@
   "services": {
     "orchestrator": {
       "responsibility": "router les intentions, sélectionner les agents et suivre les tâches",
-      "protocols": [
-        "A2A"
-      ],
-      "dependsOn": [
-        "agentRegistry",
-        "memoryGateway",
-        "observability"
+      "protocols": ["A2A"],
+      "dependsOn": ["agentRegistry", "openfoxSessionBridge", "memoryGateway", "observability"]
+    },
+    "openfoxSessionBridge": {
+      "responsibility": "convertir une tâche A2A en exécution réelle dans une session OpenFox",
+      "storage": ".ide-ai/a2a/openfox-sessions.json",
+      "endpoints": [
+        "GET /api/projects",
+        "POST /api/sessions",
+        "GET /api/sessions/{id}",
+        "POST /api/sessions/{id}/message",
+        "POST /api/sessions/{id}/stop"
       ]
     },
     "agentRegistry": {
@@ -23,10 +28,7 @@
     },
     "mcpGateway": {
       "responsibility": "connecter les agents aux outils et ressources",
-      "protocols": [
-        "MCP stdio",
-        "MCP Streamable HTTP"
-      ],
+      "protocols": ["MCP stdio", "MCP Streamable HTTP"],
       "toolLimit": 100
     },
     "memoryGateway": {
@@ -35,65 +37,62 @@
       "fallback": "none"
     },
     "ragIngestion": {
-      "responsibility": "transformer les documents en corpus multimodal indexé",
+      "responsibility": "transformer les documents en corpus multimodal indexé avec provenance précise",
       "pipeline": [
         "checksum",
         "text-extraction",
+        "page-preservation",
         "pdf-ocr",
         "image-extraction",
+        "image-page-mapping",
         "image-description",
         "tag-enrichment",
-        "chunking",
+        "provenance-chunking",
         "embedding",
         "vector-upsert",
         "index-json"
       ],
-      "outputs": [
-        "document.md",
-        "manifest.json",
-        "index.json",
-        "INDEX.md"
-      ]
+      "outputs": ["document.md", "manifest.json", "index.json", "INDEX.md"]
     },
     "vectorStore": {
       "primary": "qdrant",
       "payloadFields": [
         "documentId",
         "sourcePath",
+        "sourceChecksum",
         "title",
         "mimeType",
         "tags",
         "chunkIndex",
         "checksum",
-        "text"
+        "text",
+        "citation"
       ]
+    },
+    "a2aSecurity": {
+      "defaults": {
+        "binding": "loopback",
+        "authentication": "shared-token-when-configured",
+        "maxBodyBytes": 2097152,
+        "rateLimitPerMinute": 120,
+        "maxConcurrentTasks": 4
+      },
+      "productionPending": ["OAuth/OIDC", "JWS Agent Cards", "keychain secrets", "network policy", "security audit"]
     },
     "observability": {
       "responsibility": "journaliser les tâches, erreurs, décisions et événements watchdog",
-      "levels": [
-        "std0",
-        "std1",
-        "std2"
-      ]
+      "levels": ["std0", "std1", "std2"]
     }
   },
   "agents": {
     "orchestrator": "config/agents/orchestrator.agent-card.json",
-    "planned": [
-      "planner",
-      "code-worker",
-      "reviewer",
-      "security-auditor",
-      "rag-ingestion",
-      "researcher",
-      "documentation",
-      "test-runner"
-    ]
+    "planned": ["planner", "code-worker", "reviewer", "security-auditor", "rag-ingestion", "researcher", "documentation", "test-runner"]
   },
   "workspace": {
     "root": ".ide-ai",
     "directories": {
       "agents": ".ide-ai/agents",
+      "a2a": ".ide-ai/a2a",
       "memory": ".ide-ai/memory",
       "rag": ".ide-ai/rag",
       "tasks": ".ide-ai/tasks",

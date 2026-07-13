@@ -24,6 +24,9 @@ import {
 } from './lib/config-store.mjs'
 import { createRuntimePaths } from './lib/runtime-paths.mjs'
 import { OpenFoxRuntime } from './lib/openfox-runtime.mjs'
+import { AgentRegistryStore } from './lib/agent-registry-store.mjs'
+import { RagWorkspaceService } from './lib/rag-workspace-service.mjs'
+import { HephaistosAdapter } from './lib/hephaistos-adapter.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const preloadPath = path.join(__dirname, 'preload.mjs')
@@ -34,6 +37,10 @@ let runtimePaths
 let mainWindow
 let mcpWindow
 let logsWindow
+let aiOsWindow
+let agentRegistryStore
+let ragService
+let ragProgressHandler
 let activeWorkspace
 let quitting = false
 
@@ -156,6 +163,45 @@ function openLogsWindow() {
   })
 }
 
+function initializeWorkspaceServices() {
+  if (ragService && ragProgressHandler) ragService.off('progress', ragProgressHandler)
+  agentRegistryStore = new AgentRegistryStore({
+    workspace: activeWorkspace,
+    builtinCardPath: path.join(__dirname, '..', 'config', 'agents', 'orchestrator.agent-card.json'),
+  })
+  ragService = RagWorkspaceService.fromEnvironment({ workspace: activeWorkspace })
+  ragProgressHandler = (event) => {
+    if (aiOsWindow && !aiOsWindow.isDestroyed()) aiOsWindow.webContents.send('rag:progress', event)
+  }
+  ragService.on('progress', ragProgressHandler)
+}
+
+function openAiOsWindow() {
+  if (aiOsWindow && !aiOsWindow.isDestroyed()) {
+    aiOsWindow.focus()
+    return
+  }
+  aiOsWindow = new BrowserWindow({
+    width: 1280,
+    height: 880,
+    minWidth: 980,
+    minHeight: 680,
+    title: 'Agents et Knowledge — IDE Open AI',
+    parent: mainWindow,
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+  secureWindow(aiOsWindow)
+  void aiOsWindow.loadFile(path.join(windowsDir, 'agent-rag-dashboard.html'))
+  aiOsWindow.on('closed', () => {
+    aiOsWindow = undefined
+  })
+}
+
 function installMenu() {
   const template = [
     {
@@ -168,6 +214,12 @@ function installMenu() {
         },
         { type: 'separator' },
         { role: process.platform === 'darwin' ? 'close' : 'quit' },
+      ],
+    },
+    {
+      label: 'AI OS',
+      submenu: [
+        { label: 'Agents et Knowledge…', accelerator: 'CmdOrCtrl+Shift+K', click: openAiOsWindow },
       ],
     },
     {
@@ -252,6 +304,7 @@ async function chooseWorkspace() {
   if (result.canceled || !result.filePaths[0]) return { canceled: true }
   activeWorkspace = result.filePaths[0]
   await setWorkspace(runtimePaths, activeWorkspace)
+  initializeWorkspaceServices()
   await restartRuntime()
   return { canceled: false, workspace: activeWorkspace }
 }
@@ -261,6 +314,79 @@ function registerIpc() {
   ipcMain.handle('runtime:logs', () => runtime.getLogs())
   ipcMain.handle('runtime:restart', () => restartRuntime())
   ipcMain.handle('workspace:choose', () => chooseWorkspace())
+
+  ipcMain.handle('ai-os:status', async () => {
+    const hephaistos = HephaistosAdapter.fromEnv()
+    return {
+      workspace: activeWorkspace,
+      rag: ragService.status(),
+      hephaistos: {
+        configured: Boolean(hephaistos),
+        available: hephaistos ? await hephaistos.isAvailable() : false,
+      },
+    }
+  })
+
+  ipcMain.handle('agents:list', () => agentRegistryStore.list())
+  ipcMain.handle('agents:discover', async (_event, agentUrl) => {
+    if (typeof agentUrl !== 'string') throw new Error('URL A2A invalide.')
+    return agentRegistryStore.discover(agentUrl)
+  })
+  ipcMain.handle('agents:add', async (_event, agentUrl) => {
+    if (typeof agentUrl !== 'string') throw new Error('URL A2A invalide.')
+    return agentRegistryStore.add(agentUrl)
+  })
+  ipcMain.handle('agents:remove', async (_event, agentName) => {
+    if (typeof agentName !== 'string') throw new Error('Nom d’agent invalide.')
+    return { removed: await agentRegistryStore.remove(agentName) }
+  })
+  ipcMain.handle('agents:toggle', async (_event, payload) => {
+    checkChannelPayload(payload, ['agentName', 'enabled'])
+    return { enabled: await agentRegistryStore.setEnabled(payload.agentName, payload.enabled) }
+  })
+  ipcMain.handle('agents:refresh', async (_event, agentName) => {
+    if (typeof agentName !== 'string') throw new Error('Nom d’agent invalide.')
+    return agentRegistryStore.refresh(agentName)
+  })
+
+  ipcMain.handle('rag:list', () => ragService.listDocuments())
+  ipcMain.handle('rag:status', () => ragService.status())
+  ipcMain.handle('rag:choose-files', async () => {
+    const selection = await dialog.showOpenDialog(aiOsWindow ?? mainWindow, {
+      title: 'Ajouter des documents au RAG',
+      filters: [
+        { name: 'Documents pris en charge', extensions: ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'tif', 'tiff', 'md', 'txt', 'json'] },
+      ],
+      properties: ['openFile', 'multiSelections'],
+    })
+    return { canceled: selection.canceled, filePaths: selection.filePaths }
+  })
+  ipcMain.handle('rag:ingest', async (_event, payload) => {
+    checkChannelPayload(payload, ['filePaths'])
+    const tags = Array.isArray(payload.tags) ? payload.tags : []
+    return ragService.ingestFiles(payload.filePaths, { tags })
+  })
+  ipcMain.handle('rag:search', async (_event, payload) => {
+    checkChannelPayload(payload, ['query'])
+    return ragService.search(payload.query, { limit: Number(payload.limit || 12) })
+  })
+  ipcMain.handle('rag:open-document', async (_event, documentId) => {
+    const index = await ragService.listDocuments()
+    const entry = index.documents.find((document) => document.id === documentId)
+    if (!entry) throw new Error('Document RAG inconnu.')
+    const target = path.resolve(ragService.outputRoot, entry.documentPath)
+    if (!target.startsWith(`${path.resolve(ragService.outputRoot)}${path.sep}`)) throw new Error('Chemin documentaire non autorisé.')
+    const error = await shell.openPath(target)
+    if (error) throw new Error(error)
+    return { opened: true }
+  })
+  ipcMain.handle('rag:reveal-output', async () => {
+    const { mkdir } = await import('node:fs/promises')
+    await mkdir(ragService.outputRoot, { recursive: true })
+    const error = await shell.openPath(ragService.outputRoot)
+    if (error) throw new Error(error)
+    return { revealed: true, path: ragService.outputRoot }
+  })
 
   ipcMain.handle('mcp:list', async () => {
     const data = await apiRequest('/api/mcp/servers')
@@ -355,6 +481,7 @@ async function boot() {
   runtimePaths = createRuntimePaths(app.getPath('userData'))
   const settings = await loadDesktopSettings(runtimePaths)
   activeWorkspace = settings.workspace || app.getPath('documents')
+  initializeWorkspaceServices()
   const port = await findAvailablePort(Number(process.env.OPENAI_IDE_PORT || 10369))
   runtime = new OpenFoxRuntime({ paths: runtimePaths, port, workspace: activeWorkspace })
   createMainWindow()
