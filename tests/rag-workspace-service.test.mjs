@@ -34,7 +34,7 @@ test('RagWorkspaceService exécute un lot et remonte la progression', async () =
   ])
 })
 
-test('RagWorkspaceService recherche dans les chunks du manifeste', async () => {
+test('RagWorkspaceService retourne une citation précise depuis le manifeste', async () => {
   const workspace = await mkdtemp(path.join(os.tmpdir(), 'ide-ai-rag-search-'))
   const outputRoot = path.join(workspace, '.ide-ai', 'rag')
   const documentDirectory = path.join(outputRoot, 'documents', 'doc-1')
@@ -45,13 +45,22 @@ test('RagWorkspaceService recherche dans les chunks du manifeste', async () => {
     documents: [{
       id: 'doc-1',
       title: 'Architecture multi-agents',
+      sourcePath: '/documents/architecture.pdf',
+      sourceChecksum: 'abc123',
       tags: ['a2a', 'orchestration'],
       manifestPath: 'documents/doc-1/manifest.json',
       documentPath: 'documents/doc-1/document.md',
     }],
   }), 'utf8')
   await writeFile(path.join(documentDirectory, 'manifest.json'), JSON.stringify({
-    chunks: [{ id: 'chunk-1', index: 0, text: 'Le protocole A2A permet la délégation entre agents spécialisés.' }],
+    chunks: [{
+      id: 'chunk-1', index: 0,
+      text: 'Le protocole A2A permet la délégation entre agents spécialisés.',
+      citation: {
+        documentId: 'doc-1', title: 'Architecture multi-agents', sourceChecksum: 'abc123',
+        pageStart: 4, pageEnd: 4, chunkId: 'chunk-1', chunkIndex: 0, kind: 'text',
+      },
+    }],
   }), 'utf8')
 
   const service = new RagWorkspaceService({ workspace, pipeline: { ingest: async () => ({}) } })
@@ -59,5 +68,25 @@ test('RagWorkspaceService recherche dans les chunks du manifeste', async () => {
   assert.equal(response.mode, 'lexical')
   assert.equal(response.results.length, 1)
   assert.equal(response.results[0].documentId, 'doc-1')
+  assert.equal(response.results[0].citation.pageStart, 4)
+  assert.match(response.results[0].citation.label, /page 4/i)
   assert.match(response.results[0].snippet, /délégation/i)
+})
+
+test('RagWorkspaceService reconstruit une citation pour un ancien manifeste', async () => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'ide-ai-rag-legacy-'))
+  const outputRoot = path.join(workspace, '.ide-ai', 'rag')
+  const documentDirectory = path.join(outputRoot, 'documents', 'doc-legacy')
+  await mkdir(documentDirectory, { recursive: true })
+  await writeFile(path.join(outputRoot, 'index.json'), JSON.stringify({
+    documents: [{ id: 'doc-legacy', title: 'Ancien document', manifestPath: 'documents/doc-legacy/manifest.json' }],
+  }), 'utf8')
+  await writeFile(path.join(documentDirectory, 'manifest.json'), JSON.stringify({
+    chunks: [{ id: 'legacy-chunk', index: 3, text: 'Compatibilité avec les anciens index.' }],
+  }), 'utf8')
+
+  const service = new RagWorkspaceService({ workspace, pipeline: { ingest: async () => ({}) } })
+  const response = await service.search('anciens index')
+  assert.equal(response.results[0].citation.documentId, 'doc-legacy')
+  assert.equal(response.results[0].citation.chunkIndex, 3)
 })
