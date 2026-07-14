@@ -80,20 +80,24 @@ class FakeWatcher extends EventEmitter {
   stop() {}
 }
 
-test('WorkspaceManager synchronise projet, sessions et effectue un rollback en cas d’échec', async () => {
+test('WorkspaceManager synchronise projet, sessions et restaure le contexte précédent après un échec', async () => {
   const first = await mkdtemp(path.join(os.tmpdir(), 'ide-ai-first-'))
   const second = await mkdtemp(path.join(os.tmpdir(), 'ide-ai-second-'))
-  const registry = path.join(await mkdtemp(path.join(os.tmpdir(), 'ide-ai-registry-')), 'contexts.json')
+  const registryRoot = await mkdtemp(path.join(os.tmpdir(), 'ide-ai-registry-'))
+  const registry = path.join(registryRoot, 'contexts.json')
   const applied = []
   const persisted = []
   const restarts = []
-  let failSecond = false
+  let failTarget
 
   const runtime = {
     baseUrl: 'http://127.0.0.1:10369',
     async restart({ workspace }) {
       restarts.push(workspace)
-      if (failSecond && workspace === second) throw new Error('runtime failure')
+      if (workspace === failTarget) {
+        failTarget = undefined
+        throw new Error('runtime failure')
+      }
     },
   }
 
@@ -124,15 +128,16 @@ test('WorkspaceManager synchronise projet, sessions et effectue un rollback en c
     assert.equal(switched.rootPath, second)
     assert.equal(restarts.at(-1), second)
 
-    failSecond = true
+    failTarget = first
     await assert.rejects(() => manager.switchWorkspace(first), /Impossible de synchroniser|runtime failure/)
     assert.equal(manager.status().rootPath, second)
+    assert.equal(restarts.at(-1), second)
     assert.equal(persisted.includes(second), true)
     assert.equal(applied.includes(second), true)
   } finally {
     manager.stop()
     await rm(first, { recursive: true, force: true })
     await rm(second, { recursive: true, force: true })
-    await rm(path.dirname(registry), { recursive: true, force: true })
+    await rm(registryRoot, { recursive: true, force: true })
   }
 })
