@@ -1,9 +1,14 @@
 import { app, session } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { registerEditorIpc } from './lib/editor-ipc.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const localSessionPreload = path.join(__dirname, 'openfox-local-session-preload.cjs')
+
+// The editor handlers do not create windows and can safely be registered before
+// app.whenReady(). Their workspace is resolved lazily for each invocation.
+registerEditorIpc()
 
 // Register this callback before loading electron/main.mjs. When Electron becomes
 // ready, its promise reaction runs first and installs the session preload before
