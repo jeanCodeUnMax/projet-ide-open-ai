@@ -5,9 +5,13 @@ import { fileURLToPath } from 'node:url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const localSessionPreload = path.join(__dirname, 'openfox-local-session-preload.cjs')
 
-// Register the session preload before electron/main.mjs creates BrowserWindow
-// or WebContentsView instances. Session preloads run in addition to each
-// window-specific preload and execute before the OpenFox frontend bundle.
+// Register this callback before loading electron/main.mjs. When Electron becomes
+// ready, its promise reaction runs first and installs the session preload before
+// main.mjs creates the BrowserWindow or the OpenFox WebContentsView.
+//
+// Do not top-level-await app.whenReady() here: Electron waits for its entry
+// module to finish evaluating before completing startup, which would deadlock
+// the process before any window can be created.
 const sessionPreloadReady = app.whenReady().then(() => {
   const current = session.defaultSession.getPreloads()
   if (!current.includes(localSessionPreload)) {
@@ -15,5 +19,12 @@ const sessionPreloadReady = app.whenReady().then(() => {
   }
 })
 
-await import('./main.mjs')
-await sessionPreloadReady
+void sessionPreloadReady.catch((error) => {
+  console.error('[IDE bootstrap] Impossible d’installer le preload OpenFox local.', error)
+})
+
+void import('./main.mjs').catch((error) => {
+  console.error('[IDE bootstrap] Échec du chargement du processus principal.', error)
+  app.exitCode = 1
+  app.quit()
+})
