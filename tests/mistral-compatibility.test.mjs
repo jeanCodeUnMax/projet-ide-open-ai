@@ -1,12 +1,15 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
-import {
+import sanitizer from '../electron/lib/mistral-request-sanitizer.cjs'
+
+const {
   createMistralFetchGuard,
   sanitizeMistralChatPayload,
-} from '../electron/lib/mistral-request-sanitizer.mjs'
+} = sanitizer
 
 const runtimeUrl = new URL('../electron/lib/openfox-runtime.mjs', import.meta.url)
+const preloadUrl = new URL('../electron/openfox-mistral-fetch-guard.cjs', import.meta.url)
 
 test('le garde retire les champs de raisonnement internes et les options backend des requêtes Mistral', () => {
   const payload = {
@@ -70,9 +73,22 @@ test('le garde fetch réécrit uniquement le corps JSON Mistral', async () => {
   assert.deepEqual(sent.messages[0], { role: 'assistant', content: 'ok' })
 })
 
-test('OpenFox charge le garde avant son CLI', async () => {
+test('OpenFox charge le garde CommonJS avant son CLI sans utiliser --import', async () => {
+  const [runtime, preload] = await Promise.all([
+    readFile(runtimeUrl, 'utf8'),
+    readFile(preloadUrl, 'utf8'),
+  ])
+
+  assert.match(runtime, /openfox-mistral-fetch-guard\.cjs/)
+  assert.match(runtime, /\['--require', compatibilityGuard, cliPath/)
+  assert.doesNotMatch(runtime, /--import/)
+  assert.ok(runtime.indexOf("'--require', compatibilityGuard, cliPath") < runtime.indexOf("'--port'"))
+  assert.match(preload, /OpenFox continue sans garde/)
+})
+
+test('le runtime confirme deux fois la santé avant de charger une session', async () => {
   const runtime = await readFile(runtimeUrl, 'utf8')
-  assert.match(runtime, /openfox-mistral-fetch-guard\.mjs/)
-  assert.match(runtime, /--import=\$\{compatibilityGuard\}/)
-  assert.ok(runtime.indexOf('--import=${compatibilityGuard}') < runtime.indexOf("cliPath, '--port'"))
+  assert.match(runtime, /OpenFox s’est arrêté juste après son contrôle de santé/)
+  assert.match(runtime, /const confirmation = await fetch/)
+  assert.match(runtime, /startupDiagnostics\(\)/)
 })
