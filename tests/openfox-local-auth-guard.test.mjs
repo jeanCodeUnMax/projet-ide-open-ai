@@ -51,6 +51,15 @@ test('le preload ne remplace jamais un token OpenFox déjà présent', () => {
   )
 })
 
+test('le preload transforme un dépôt de l’explorateur en référence de contexte OpenFox', async () => {
+  const source = await readFile(preloadUrl, 'utf8')
+  assert.match(source, /application\/x-ide-open-ai-workspace-entry/)
+  assert.match(source, /data-testid=[\\]?["']chat-input-textarea/)
+  assert.match(source, /@\$\{normalizedPath\}/)
+  assert.match(source, /new InputEvent\(['"]input['"]/)
+  assert.match(source, /stopImmediatePropagation\(\)/)
+})
+
 test('le bootstrap installe le preload moderne avant main sans bloquer app.whenReady', async () => {
   const source = await readFile(bootstrapUrl, 'utf8')
   assert.match(source, /session\.defaultSession\.getPreloadScripts\(\)/)
