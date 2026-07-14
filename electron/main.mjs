@@ -29,6 +29,7 @@ import { AgentRegistryStore } from './lib/agent-registry-store.mjs'
 import { RagWorkspaceService } from './lib/rag-workspace-service.mjs'
 import { HephaistosAdapter } from './lib/hephaistos-adapter.mjs'
 import { WorkspaceExplorer, resolveWorkspaceDirectory } from './lib/workspace-explorer.mjs'
+import { WorkspaceManager } from './lib/workspace-manager.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const preloadPath = path.join(__dirname, 'preload.mjs')
@@ -38,6 +39,7 @@ const LAYOUT = Object.freeze({ sidebarWidth: 320, topbarHeight: 46, statusbarHei
 
 let runtime
 let runtimePaths
+let workspaceManager
 let mainWindow
 let openFoxView
 let openFoxViewAttached = false
@@ -91,10 +93,16 @@ function secureWindow(window, allowedOrigin) {
   secureWebContents(window.webContents, allowedOrigin)
 }
 
+function sendToShell(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload)
+}
+
 function emitRuntimeStatus(state, message) {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('runtime:status', { state, message })
-  }
+  sendToShell('runtime:status', { state, message })
+}
+
+function emitWorkspaceStatus(state, message, context = workspaceManager?.status()) {
+  sendToShell('workspace:sync-status', { state, message, context })
 }
 
 function layoutOpenFoxView() {
@@ -135,6 +143,9 @@ function createOpenFoxView() {
     if (!isMainFrame || code === -3) return
     emitRuntimeStatus('error', `OpenFox indisponible : ${description} (${validatedUrl})`)
   })
+  openFoxView.webContents.on('did-navigate', (_event, url) => {
+    sendToShell('openfox:navigated', { url })
+  })
   return openFoxView
 }
 
@@ -146,10 +157,10 @@ async function setShellMode(mode) {
   return { mode }
 }
 
-async function loadOpenFoxUi() {
+async function loadOpenFoxUi(targetUrl = workspaceManager?.status().openFoxUrl ?? runtime.baseUrl) {
   createOpenFoxView()
-  emitRuntimeStatus('starting', `OpenFox : connexion à ${runtime.baseUrl}`)
-  await openFoxView.webContents.loadURL(runtime.baseUrl)
+  emitRuntimeStatus('starting', `OpenFox : connexion à ${targetUrl}`)
+  await openFoxView.webContents.loadURL(targetUrl)
   if (shellMode === 'openfox') attachOpenFoxView()
   emitRuntimeStatus('ready', `OpenFox prêt · port ${runtime.port}`)
 }
@@ -234,7 +245,8 @@ function openLogsWindow() {
   logsWindow.on('closed', () => { logsWindow = undefined })
 }
 
-function initializeWorkspaceServices() {
+function initializeWorkspaceServices(workspace = activeWorkspace) {
+  activeWorkspace = workspace
   if (ragService && ragProgressHandler) ragService.off('progress', ragProgressHandler)
   agentRegistryStore = new AgentRegistryStore({
     workspace: activeWorkspace,
@@ -271,7 +283,8 @@ function installMenu() {
       label: 'Projet',
       submenu: [
         { label: 'Ouvrir un workspace…', accelerator: 'CmdOrCtrl+O', click: () => void chooseWorkspace() },
-        { label: 'Actualiser l’explorateur', accelerator: 'CmdOrCtrl+R', click: () => mainWindow?.webContents.send('workspace:changed', { workspace: activeWorkspace }) },
+        { label: 'Actualiser l’explorateur', accelerator: 'CmdOrCtrl+R', click: () => sendToShell('workspace:changed', workspaceManager?.status()) },
+        { label: 'Resynchroniser avec OpenFox', click: () => void restartRuntime() },
         { type: 'separator' },
         { role: process.platform === 'darwin' ? 'close' : 'quit' },
       ],
@@ -348,23 +361,52 @@ async function enforceToolLimit() {
   return autoDisabled
 }
 
+function wireWorkspaceManager(manager) {
+  manager.on('status', ({ state, message, context }) => emitWorkspaceStatus(state, message, context))
+  manager.on('changed', (context) => {
+    activeWorkspace = context.rootPath
+    sendToShell('workspace:changed', context)
+  })
+  manager.on('files-changed', (payload) => sendToShell('workspace:files-changed', payload))
+  manager.on('watcher-ready', ({ mode }) => emitWorkspaceStatus('ready', `Surveillance du workspace active (${mode})`, manager.status()))
+  manager.on('watcher-warning', ({ message, fallback }) => emitWorkspaceStatus('warning', `${message} — repli ${fallback}`, manager.status()))
+  manager.on('watcher-error', (error) => emitWorkspaceStatus('warning', `Surveillance fichiers : ${error.message}`, manager.status()))
+}
+
 async function restartRuntime() {
-  emitRuntimeStatus('starting', 'OpenFox : redémarrage…')
+  emitRuntimeStatus('starting', 'OpenFox : redémarrage et resynchronisation…')
   detachOpenFoxView()
   await runtime.restart({ workspace: activeWorkspace })
   const autoDisabled = await enforceToolLimit()
-  await loadOpenFoxUi()
-  return { success: true, autoDisabled }
+  const context = workspaceManager
+    ? await workspaceManager.resynchronize({ runtimeAlreadyRestarted: true })
+    : undefined
+  await loadOpenFoxUi(context?.openFoxUrl ?? runtime.baseUrl)
+  return { success: true, autoDisabled, context }
 }
 
 async function switchWorkspace(candidate) {
-  const resolved = await resolveWorkspaceDirectory(candidate)
-  activeWorkspace = resolved
-  await setWorkspace(runtimePaths, activeWorkspace)
-  initializeWorkspaceServices()
-  mainWindow?.webContents.send('workspace:changed', { workspace: activeWorkspace })
-  await restartRuntime()
-  return { canceled: false, workspace: activeWorkspace }
+  if (!workspaceManager) throw new Error('Le gestionnaire de workspace n’est pas encore prêt.')
+  detachOpenFoxView()
+  emitRuntimeStatus('starting', 'OpenFox : changement de projet…')
+  try {
+    const context = await workspaceManager.switchWorkspace(candidate)
+    activeWorkspace = context.rootPath
+    const autoDisabled = await enforceToolLimit()
+    await loadOpenFoxUi(context.openFoxUrl)
+    return {
+      canceled: false,
+      workspace: context.rootPath,
+      project: context.project,
+      activeSession: context.activeSession,
+      autoDisabled,
+    }
+  } catch (error) {
+    const restored = workspaceManager.status()
+    await enforceToolLimit().catch(() => [])
+    await loadOpenFoxUi(restored.openFoxUrl ?? runtime.baseUrl).catch(() => undefined)
+    throw error
+  }
 }
 
 async function chooseWorkspace() {
@@ -379,12 +421,27 @@ async function chooseWorkspace() {
 }
 
 function registerIpc() {
-  ipcMain.handle('app:info', () => ({ version: app.getVersion(), workspace: activeWorkspace, port: runtime?.port, mode: shellMode }))
+  ipcMain.handle('app:info', () => ({
+    version: app.getVersion(),
+    workspace: activeWorkspace,
+    port: runtime?.port,
+    mode: shellMode,
+    sync: workspaceManager?.status(),
+  }))
   ipcMain.handle('runtime:logs', () => runtime.getLogs())
   ipcMain.handle('runtime:restart', () => restartRuntime())
   ipcMain.handle('layout:set-mode', (_event, mode) => setShellMode(mode))
 
-  ipcMain.handle('workspace:current', () => workspaceExplorer.info())
+  ipcMain.handle('workspace:current', async () => ({
+    ...(await workspaceExplorer.info()),
+    sync: workspaceManager?.status(),
+  }))
+  ipcMain.handle('workspace:sync-status', () => workspaceManager?.status())
+  ipcMain.handle('workspace:refresh-sessions', async () => {
+    const context = await workspaceManager.refreshSessions()
+    await loadOpenFoxUi(context.openFoxUrl)
+    return context
+  })
   ipcMain.handle('workspace:choose', () => chooseWorkspace())
   ipcMain.handle('workspace:open-path', (_event, workspacePath) => switchWorkspace(workspacePath))
   ipcMain.handle('workspace:list', (_event, relativePath = '') => workspaceExplorer.list(relativePath))
@@ -399,6 +456,7 @@ function registerIpc() {
     const hephaistos = HephaistosAdapter.fromEnv()
     return {
       workspace: activeWorkspace,
+      openFox: workspaceManager?.status(),
       rag: ragService.status(),
       hephaistos: { configured: Boolean(hephaistos), available: hephaistos ? await hephaistos.isAvailable() : false },
     }
@@ -544,7 +602,7 @@ async function boot() {
   activeWorkspace = await resolveWorkspaceDirectory(preferredWorkspace)
     .catch(() => resolveWorkspaceDirectory(app.getPath('documents')))
   workspaceExplorer = new WorkspaceExplorer({ workspace: activeWorkspace })
-  initializeWorkspaceServices()
+  initializeWorkspaceServices(activeWorkspace)
 
   const port = await findAvailablePort(Number(process.env.OPENAI_IDE_PORT || 10369))
   runtime = new OpenFoxRuntime({ paths: runtimePaths, port, workspace: activeWorkspace })
@@ -552,7 +610,7 @@ async function boot() {
   registerIpc()
   installMenu()
   await loadShell()
-  mainWindow.webContents.send('workspace:changed', { workspace: activeWorkspace })
+  sendToShell('workspace:changed', { rootPath: activeWorkspace, syncState: 'starting' })
 
   runtime.on('unexpected-exit', ({ code }) => {
     if (!quitting) {
@@ -565,9 +623,27 @@ async function boot() {
     emitRuntimeStatus('starting', 'OpenFox : démarrage…')
     await runtime.start()
     await enforceToolLimit()
-    await loadOpenFoxUi()
   } catch (error) {
     await showStartupError(error)
+    return
+  }
+
+  workspaceManager = new WorkspaceManager({
+    runtime,
+    initialWorkspace: activeWorkspace,
+    registryPath: path.join(runtimePaths.root, 'workspace-contexts.json'),
+    persistWorkspace: (workspace) => setWorkspace(runtimePaths, workspace),
+    applyWorkspace: async (workspace) => initializeWorkspaceServices(workspace),
+  })
+  wireWorkspaceManager(workspaceManager)
+
+  try {
+    const context = await workspaceManager.initialize()
+    await loadOpenFoxUi(context.openFoxUrl)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    emitWorkspaceStatus('error', `OpenFox fonctionne, mais la synchronisation projet a échoué : ${message}`)
+    await loadOpenFoxUi(runtime.baseUrl)
   }
 }
 
@@ -586,7 +662,9 @@ app.whenReady().then(boot).catch(showStartupError)
 app.on('activate', () => {
   if (!mainWindow && runtime) {
     createMainWindow()
-    void loadShell().then(() => loadOpenFoxUi()).catch(showStartupError)
+    void loadShell()
+      .then(() => loadOpenFoxUi(workspaceManager?.status().openFoxUrl ?? runtime.baseUrl))
+      .catch(showStartupError)
   }
 })
 
@@ -594,6 +672,7 @@ app.on('before-quit', (event) => {
   if (quitting || !runtime) return
   event.preventDefault()
   quitting = true
+  workspaceManager?.stop()
   detachOpenFoxView()
   runtime.stop().finally(() => app.quit())
 })
