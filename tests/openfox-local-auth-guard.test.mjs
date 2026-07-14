@@ -1,7 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import vm from 'node:vm'
+
+const require = createRequire(import.meta.url)
+const {
+  normalizeProjectCreatePayload,
+  windowsBasename,
+} = require('../electron/lib/openfox-windows-project-guard.cjs')
 
 const preloadUrl = new URL('../electron/openfox-local-session-preload.cjs', import.meta.url)
 const bootstrapUrl = new URL('../electron/bootstrap.mjs', import.meta.url)
@@ -49,6 +56,27 @@ test('le preload ne remplace jamais un token OpenFox déjà présent', () => {
     executePreload({ protocol: 'http:', hostname: '127.0.0.1', initialToken: 'existing-token' }),
     'existing-token',
   )
+})
+
+test('le sélecteur OpenFox extrait correctement le nom d’un dossier Windows', () => {
+  const workdir = String.raw`E:\projets\projet-ide-open-ai\tessssttt\MON-IDE`
+  assert.equal(windowsBasename(workdir), 'MON-IDE')
+
+  const malformed = { name: workdir, workdir }
+  assert.deepEqual(normalizeProjectCreatePayload(malformed), {
+    name: 'MON-IDE',
+    workdir,
+  })
+
+  const valid = { name: 'MON-IDE', workdir }
+  assert.equal(normalizeProjectCreatePayload(valid), valid)
+})
+
+test('le preload installe le correctif du sélecteur Windows dans le monde principal', async () => {
+  const source = await readFile(preloadUrl, 'utf8')
+  assert.match(source, /openfox-windows-project-guard\.cjs/)
+  assert.match(source, /executeInMainWorld/)
+  assert.match(source, /installWindowsProjectSelectionGuard\(\)/)
 })
 
 test('le preload transforme un dépôt de l’explorateur en référence de contexte OpenFox', async () => {
