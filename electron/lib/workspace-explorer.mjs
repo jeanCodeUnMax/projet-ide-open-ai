@@ -1,4 +1,4 @@
-import { readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises'
+import { readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 // Visibility and indexing are deliberately separated. The explorer shows every
@@ -25,6 +25,17 @@ function normalizeRequestedRelativePath(value) {
   if (path.isAbsolute(portable)) throw new Error('Un chemin relatif au workspace est attendu.')
   const normalized = path.normalize(portable)
   return normalized === '.' ? '' : normalized
+}
+
+function validateEntryName(value) {
+  if (typeof value !== 'string') throw new Error('Le nouveau nom doit être une chaîne.')
+  const name = value.trim()
+  if (!name || name === '.' || name === '..') throw new Error('Le nouveau nom est invalide.')
+  if (name.includes('\0') || /[\\/]/.test(name)) throw new Error('Le nouveau nom ne doit pas contenir de séparateur de chemin.')
+  if (process.platform === 'win32' && (/[<>:"|?*]/.test(name) || /[. ]$/.test(name))) {
+    throw new Error('Ce nom n’est pas valide sous Windows.')
+  }
+  return name
 }
 
 function languageForFile(filePath) {
@@ -59,6 +70,15 @@ function languageForFile(filePath) {
 function looksBinary(buffer) {
   const sample = buffer.subarray(0, Math.min(buffer.length, 8_192))
   return sample.includes(0)
+}
+
+async function existingRealPath(candidate) {
+  try {
+    return await realpath(candidate)
+  } catch (error) {
+    if (error?.code === 'ENOENT') return undefined
+    throw error
+  }
 }
 
 export async function resolveWorkspaceDirectory(candidate) {
@@ -98,6 +118,22 @@ export class WorkspaceExplorer {
     const target = await realpath(candidate)
     if (!isPathInside(root, target)) throw new Error('Chemin hors du workspace interdit.')
     return { root, target, relativePath: portableRelativePath(root, target) }
+  }
+
+  async #resolveDestination(relativePath) {
+    const root = await resolveWorkspaceDirectory(this.workspace)
+    const normalized = normalizeRequestedRelativePath(relativePath)
+    if (!normalized) throw new Error('La racine du workspace ne peut pas être remplacée.')
+    const target = path.resolve(root, normalized)
+    if (!isPathInside(root, target)) throw new Error('Destination hors du workspace interdite.')
+    const parent = await realpath(path.dirname(target))
+    if (!isPathInside(root, parent)) throw new Error('Destination hors du workspace interdite.')
+    return {
+      root,
+      target,
+      relativePath: portableRelativePath(root, target),
+      existing: await existingRealPath(target),
+    }
   }
 
   async list(relativePath = '') {
@@ -180,6 +216,66 @@ export class WorkspaceExplorer {
 
     await writeFile(resolved.target, content, { encoding: 'utf8', flag: 'w' })
     return this.read(resolved.relativePath)
+  }
+
+  async renameEntry(relativePath, newName) {
+    const source = await this.#resolveExisting(relativePath)
+    if (!source.relativePath) throw new Error('La racine du workspace ne peut pas être renommée.')
+    const safeName = validateEntryName(newName)
+    const destinationRelativePath = portableRelativePath(
+      source.root,
+      path.join(path.dirname(source.target), safeName),
+    )
+    const destination = await this.#resolveDestination(destinationRelativePath)
+
+    if (destination.existing && destination.existing !== source.target) {
+      throw new Error(`Un élément nommé « ${safeName} » existe déjà dans ce dossier.`)
+    }
+    if (destination.target === source.target) {
+      return { moved: false, from: source.relativePath, to: source.relativePath, name: path.basename(source.target) }
+    }
+
+    await rename(source.target, destination.target)
+    return {
+      moved: true,
+      from: source.relativePath,
+      to: destination.relativePath,
+      name: safeName,
+    }
+  }
+
+  async moveEntry(relativePath, targetDirectoryRelativePath = '') {
+    const source = await this.#resolveExisting(relativePath)
+    if (!source.relativePath) throw new Error('La racine du workspace ne peut pas être déplacée.')
+    const targetDirectory = await this.#resolveExisting(targetDirectoryRelativePath)
+    const targetDetails = await stat(targetDirectory.target)
+    if (!targetDetails.isDirectory()) throw new Error('La destination doit être un dossier.')
+
+    const sourceDetails = await stat(source.target)
+    if (sourceDetails.isDirectory() && isPathInside(source.target, targetDirectory.target)) {
+      throw new Error('Un dossier ne peut pas être déplacé dans lui-même ou dans l’un de ses sous-dossiers.')
+    }
+
+    const destinationRelativePath = portableRelativePath(
+      source.root,
+      path.join(targetDirectory.target, path.basename(source.target)),
+    )
+    const destination = await this.#resolveDestination(destinationRelativePath)
+
+    if (destination.target === source.target) {
+      return { moved: false, from: source.relativePath, to: source.relativePath, name: path.basename(source.target) }
+    }
+    if (destination.existing) {
+      throw new Error(`Un élément nommé « ${path.basename(source.target)} » existe déjà dans le dossier de destination.`)
+    }
+
+    await rename(source.target, destination.target)
+    return {
+      moved: true,
+      from: source.relativePath,
+      to: destination.relativePath,
+      name: path.basename(source.target),
+    }
   }
 
   async absolutePath(relativePath = '') {
