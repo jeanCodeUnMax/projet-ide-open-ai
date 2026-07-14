@@ -25,6 +25,18 @@ function validateSavePayload(payload) {
   }
 }
 
+function validateEntryPayload(payload, requiredKeys) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Opération de fichier invalide.')
+  }
+  for (const key of requiredKeys) {
+    if (typeof payload[key] !== 'string') throw new Error(`Champ invalide : ${key}.`)
+  }
+  if (typeof payload.relativePath === 'string' && payload.relativePath.trim() === '') {
+    throw new Error('La racine du workspace ne peut pas être modifiée.')
+  }
+}
+
 export function registerEditorIpc() {
   if (registered) return
   registered = true
@@ -44,5 +56,25 @@ export function registerEditorIpc() {
     const explorer = await activeExplorer()
     const targetPath = await explorer.absolutePath(relativePath)
     return openInVSCode(targetPath, { shellApi: shell })
+  })
+
+  ipcMain.handle('workspace:rename-entry', async (_event, payload) => {
+    validateEntryPayload(payload, ['relativePath', 'newName'])
+    const explorer = await activeExplorer()
+    return explorer.renameEntry(payload.relativePath, payload.newName)
+  })
+
+  ipcMain.handle('workspace:move-entry', async (_event, payload) => {
+    validateEntryPayload(payload, ['relativePath', 'targetDirectoryRelativePath'])
+    const explorer = await activeExplorer()
+    return explorer.moveEntry(payload.relativePath, payload.targetDirectoryRelativePath)
+  })
+
+  ipcMain.handle('workspace:trash-entry', async (_event, payload) => {
+    validateEntryPayload(payload, ['relativePath'])
+    const explorer = await activeExplorer()
+    const targetPath = await explorer.absolutePath(payload.relativePath)
+    await shell.trashItem(targetPath)
+    return { trashed: true, relativePath: payload.relativePath, path: targetPath }
   })
 }
