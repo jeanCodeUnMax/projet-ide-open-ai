@@ -60,7 +60,13 @@ test('la taille de contexte locale est configurable et bornée', () => {
 
 test('le runtime optimise la configuration avant de lancer OpenFox', async () => {
   const runtime = await readFile(runtimeUrl, 'utf8')
-  assert.match(runtime, /optimizeOpenFoxLocalProviders/)
-  assert.ok(runtime.indexOf('optimizeOpenFoxLocalProviders(this.paths)') < runtime.indexOf('syncCanonicalMcpToOpenFox'))
-  assert.ok(runtime.indexOf('optimizeOpenFoxLocalProviders(this.paths)') < runtime.indexOf("const cliPath = await locateOpenFoxCli()"))
+  const optimizeCall = runtime.indexOf('await optimizeOpenFoxLocalProviders(this.paths)')
+  const syncCall = runtime.indexOf('await syncCanonicalMcpToOpenFox(this.paths')
+  const locateCliCall = runtime.indexOf('const cliPath = await locateOpenFoxCli()')
+
+  assert.ok(optimizeCall >= 0)
+  assert.ok(syncCall >= 0)
+  assert.ok(locateCliCall >= 0)
+  assert.ok(optimizeCall < syncCall)
+  assert.ok(optimizeCall < locateCliCall)
 })
