@@ -8,6 +8,8 @@ const required = [
   'electron/lib/openfox-runtime.mjs',
   'electron/lib/openfox-session-client.mjs',
   'electron/lib/workspace-explorer.mjs',
+  'electron/lib/workspace-file-watcher.mjs',
+  'electron/lib/workspace-manager.mjs',
   'electron/lib/a2a-protocol.mjs',
   'electron/lib/a2a-server.mjs',
   'electron/lib/a2a-openfox-executor.mjs',
