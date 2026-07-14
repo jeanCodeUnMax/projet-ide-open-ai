@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { spawn, spawnSync } from 'node:child_process'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { access, appendFile, mkdir } from 'node:fs/promises'
 import { ensureOpenFoxBootstrap, syncCanonicalMcpToOpenFox } from './config-store.mjs'
@@ -45,6 +45,7 @@ export class OpenFoxRuntime extends EventEmitter {
     this.child = null
     this.stopping = false
     this.logs = []
+    this.lastExit = undefined
   }
 
   get baseUrl() {
@@ -54,6 +55,7 @@ export class OpenFoxRuntime extends EventEmitter {
   async start() {
     if (this.child) return
     this.stopping = false
+    this.lastExit = undefined
     await ensureOpenFoxBootstrap(this.paths, { port: this.port, workspace: this.workspace })
     await syncCanonicalMcpToOpenFox(this.paths, {
       ...process.env,
@@ -62,9 +64,11 @@ export class OpenFoxRuntime extends EventEmitter {
 
     const cliPath = await locateOpenFoxCli()
     const nodeBinary = resolveNodeBinary()
-    const compatibilityGuard = pathToFileURL(
-      path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'openfox-mistral-fetch-guard.mjs'),
-    ).href
+    const compatibilityGuard = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '..',
+      'openfox-mistral-fetch-guard.cjs',
+    )
     const env = {
       ...process.env,
       ...this.paths.env,
@@ -75,7 +79,7 @@ export class OpenFoxRuntime extends EventEmitter {
     await mkdir(path.dirname(this.paths.logPath), { recursive: true })
     this.child = spawn(
       nodeBinary,
-      [`--import=${compatibilityGuard}`, cliPath, '--port', String(this.port), '--no-browser'],
+      ['--require', compatibilityGuard, cliPath, '--port', String(this.port), '--no-browser'],
       {
         cwd: this.workspace,
         env,
@@ -88,6 +92,7 @@ export class OpenFoxRuntime extends EventEmitter {
     this.child.stderr?.on('data', (chunk) => this.record('stderr', chunk.toString()))
     this.child.on('error', (error) => this.emit('error', error))
     this.child.on('exit', (code, signal) => {
+      this.lastExit = { code, signal }
       this.record('runtime', `OpenFox arrêté (code=${code ?? 'null'}, signal=${signal ?? 'null'})\n`)
       this.child = null
       if (!this.stopping) this.emit('unexpected-exit', { code, signal })
@@ -97,20 +102,41 @@ export class OpenFoxRuntime extends EventEmitter {
     this.emit('ready', { baseUrl: this.baseUrl })
   }
 
+  startupDiagnostics() {
+    const exit = this.lastExit
+      ? `Sortie du processus: code=${this.lastExit.code ?? 'null'}, signal=${this.lastExit.signal ?? 'null'}.`
+      : ''
+    const tail = this.logs.slice(-20).join('').trim()
+    return [exit, tail ? `Derniers journaux:\n${tail}` : ''].filter(Boolean).join('\n')
+  }
+
   async waitForHealth(timeoutMs = 45_000) {
     const deadline = Date.now() + timeoutMs
     let lastError
     while (Date.now() < deadline) {
-      if (!this.child) throw new Error('Le processus OpenFox s’est arrêté pendant le démarrage.')
+      if (!this.child) {
+        throw new Error(`Le processus OpenFox s’est arrêté pendant le démarrage.\n${this.startupDiagnostics()}`)
+      }
       try {
         const response = await fetch(`${this.baseUrl}/api/health`, { signal: AbortSignal.timeout(1_500) })
-        if (response.ok) return
+        if (response.ok) {
+          // A first successful response can come from a process that is already
+          // shutting down. Confirm stability before allowing Electron to load a session URL.
+          await new Promise((resolve) => setTimeout(resolve, 650))
+          if (!this.child) {
+            throw new Error(`OpenFox s’est arrêté juste après son contrôle de santé.\n${this.startupDiagnostics()}`)
+          }
+          const confirmation = await fetch(`${this.baseUrl}/api/health`, { signal: AbortSignal.timeout(1_500) })
+          if (confirmation.ok) return
+        }
       } catch (error) {
         lastError = error
       }
       await new Promise((resolve) => setTimeout(resolve, 350))
     }
-    throw new Error(`OpenFox ne répond pas après 45 secondes. ${lastError ? String(lastError) : ''}`)
+    throw new Error(
+      `OpenFox ne répond pas après 45 secondes. ${lastError ? String(lastError) : ''}\n${this.startupDiagnostics()}`,
+    )
   }
 
   async stop() {
