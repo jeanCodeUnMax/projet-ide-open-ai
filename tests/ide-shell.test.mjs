@@ -14,8 +14,11 @@ test('la coque IDE contient l’explorateur, les onglets et l’aperçu de fichi
   }
 })
 
-test('le preload expose seulement les opérations workspace nécessaires', async () => {
+test('le preload sandboxé expose les opérations workspace avec require Electron', async () => {
   const preload = await readFile(preloadUrl, 'utf8')
+  assert.match(preload, /require\(['"]electron['"]\)/)
+  assert.doesNotMatch(preload, /^import\s/m)
+  assert.match(preload, /exposeInMainWorld\(['"]desktopAPI['"]/)
   for (const channel of ['workspace:current', 'workspace:choose', 'workspace:open-path', 'workspace:list', 'workspace:read-file', 'workspace:reveal']) {
     assert.match(preload, new RegExp(channel.replace(':', '\\:')))
   }
