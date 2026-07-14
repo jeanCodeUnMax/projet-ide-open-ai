@@ -11,7 +11,8 @@ test('une navigation OpenFox ne réinjecte pas un rafraîchissement de session',
     readFile(shellUrl, 'utf8'),
   ])
 
-  assert.match(shell, /openFox\?\.onNavigated/)
+  assert.doesNotMatch(shell, /openFox\?\.onNavigated/)
+  assert.doesNotMatch(shell, /openfox:navigated/)
   assert.match(preload, /onNavigated:\s*\(\)\s*=>\s*\(\)\s*=>\s*\{\}/)
   assert.doesNotMatch(preload, /subscribe\(['"]openfox:navigated['"]/)
 })
