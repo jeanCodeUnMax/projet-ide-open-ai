@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { access, appendFile, mkdir } from 'node:fs/promises'
 import { ensureOpenFoxBootstrap, syncCanonicalMcpToOpenFox } from './config-store.mjs'
+import { optimizeOpenFoxLocalProviders } from './openfox-provider-optimizer.mjs'
 
 export async function locateOpenFoxCli() {
   let serverEntry
@@ -57,6 +58,7 @@ export class OpenFoxRuntime extends EventEmitter {
     this.stopping = false
     this.lastExit = undefined
     await ensureOpenFoxBootstrap(this.paths, { port: this.port, workspace: this.workspace })
+    await optimizeOpenFoxLocalProviders(this.paths)
     await syncCanonicalMcpToOpenFox(this.paths, {
       ...process.env,
       WORKSPACE_PATH: this.workspace,
