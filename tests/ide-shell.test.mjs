@@ -7,10 +7,23 @@ const scriptUrl = new URL('../electron/windows/ide-shell.js', import.meta.url)
 const preloadUrl = new URL('../electron/preload.mjs', import.meta.url)
 const mainUrl = new URL('../electron/main.mjs', import.meta.url)
 
-test('la coque IDE contient l’explorateur, les onglets et l’aperçu de fichier', async () => {
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+test('la coque IDE contient l’explorateur, les onglets, l’aperçu et l’état OpenFox', async () => {
   const html = await readFile(htmlUrl, 'utf8')
-  for (const id of ['workspace-tree', 'workspace-path', 'choose-workspace', 'openfox-tab', 'file-tab', 'editor-content']) {
-    assert.match(html, new RegExp(`id=["']${id}["']`))
+  for (const id of [
+    'workspace-tree',
+    'workspace-path',
+    'choose-workspace',
+    'workspace-sync-label',
+    'openfox-project',
+    'openfox-session',
+    'refresh-sessions',
+    'openfox-tab',
+    'file-tab',
+    'editor-content',
+  ]) {
+    assert.match(html, new RegExp(`id=["']${escapeRegExp(id)}["']`))
   }
 })
 
@@ -19,20 +32,35 @@ test('le preload sandboxé expose les opérations workspace avec require Electro
   assert.match(preload, /require\(['"]electron['"]\)/)
   assert.doesNotMatch(preload, /^import\s/m)
   assert.match(preload, /exposeInMainWorld\(['"]desktopAPI['"]/)
-  for (const channel of ['workspace:current', 'workspace:choose', 'workspace:open-path', 'workspace:list', 'workspace:read-file', 'workspace:reveal']) {
-    assert.match(preload, new RegExp(channel.replace(':', '\\:')))
+  for (const channel of [
+    'workspace:current',
+    'workspace:sync-status',
+    'workspace:refresh-sessions',
+    'workspace:choose',
+    'workspace:open-path',
+    'workspace:list',
+    'workspace:read-file',
+    'workspace:reveal',
+    'workspace:files-changed',
+  ]) {
+    assert.match(preload, new RegExp(escapeRegExp(channel)))
   }
 })
 
-test('le contrôleur de coque utilise textContent pour afficher les fichiers', async () => {
+test('le contrôleur de coque utilise textContent et écoute les changements fichiers', async () => {
   const script = await readFile(scriptUrl, 'utf8')
   assert.match(script, /editorContent\.textContent/)
   assert.doesNotMatch(script, /editorContent\.innerHTML/)
+  assert.match(script, /onFilesChanged/)
+  assert.match(script, /refreshSessions/)
 })
 
-test('le processus principal monte OpenFox dans une WebContentsView', async () => {
+test('le processus principal monte OpenFox et le WorkspaceManager', async () => {
   const main = await readFile(mainUrl, 'utf8')
   assert.match(main, /WebContentsView/)
+  assert.match(main, /WorkspaceManager/)
   assert.match(main, /workspace:read-file/)
+  assert.match(main, /workspace:refresh-sessions/)
   assert.match(main, /defaultPath:\s*activeWorkspace/)
+  assert.match(main, /loadOpenFoxUi\(context\.openFoxUrl\)/)
 })
