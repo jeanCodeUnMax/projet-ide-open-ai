@@ -7,6 +7,8 @@ const required = [
   'electron/preload.mjs',
   'electron/openfox-local-session-preload.cjs',
   'electron/lib/config-store.mjs',
+  'electron/lib/editor-ipc.mjs',
+  'electron/lib/external-editor.mjs',
   'electron/lib/openfox-runtime.mjs',
   'electron/lib/openfox-session-client.mjs',
   'electron/lib/workspace-explorer.mjs',
