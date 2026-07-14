@@ -12,7 +12,6 @@ const dndElements = {
   sidebar: document.querySelector('#workspace-sidebar'),
   tree: document.querySelector('#workspace-tree'),
   overlay: document.querySelector('#workspace-drop-overlay'),
-  overlayTitle: document.querySelector('#workspace-drop-title'),
   overlayTarget: document.querySelector('#workspace-drop-target'),
   status: document.querySelector('#status-message'),
   refresh: document.querySelector('#refresh-tree'),
@@ -27,10 +26,10 @@ function setDndStatus(message) {
 
 function entryForRow(row) {
   if (!(row instanceof HTMLElement)) return undefined
-  const relativePath = row.title?.trim()
+  const relativePath = row.dataset.ideRelativePath || row.title?.trim()
   if (!relativePath) return undefined
   const toggle = row.querySelector('.tree-toggle')
-  const kind = toggle?.textContent ? 'directory' : 'file'
+  const kind = row.dataset.ideEntryKind || (toggle?.textContent ? 'directory' : 'file')
   return { relativePath, kind }
 }
 
@@ -78,6 +77,8 @@ function enableTreeRowDrag(row) {
   const entry = entryForRow(row)
   if (!entry) return
   row.dataset.ideDndReady = 'true'
+  row.dataset.ideRelativePath = entry.relativePath
+  row.dataset.ideEntryKind = entry.kind
   row.draggable = true
   row.title = `${entry.relativePath}\nGlisser vers le chat OpenFox pour ajouter au contexte.`
 
