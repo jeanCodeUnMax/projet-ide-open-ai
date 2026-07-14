@@ -23,6 +23,14 @@ function setFileOpsStatus(message) {
   if (fileOpsElements.status) fileOpsElements.status.textContent = message
 }
 
+function currentEditorPath() {
+  return fileOpsElements.editorPath?.textContent?.trim() || ''
+}
+
+function reloadShellSoon() {
+  window.setTimeout(() => window.location.reload(), 80)
+}
+
 function entryForFileOpsRow(row) {
   if (!(row instanceof HTMLElement)) return undefined
   const relativePath = row.dataset.ideRelativePath || row.title?.split('\n')[0]?.trim()
@@ -64,7 +72,7 @@ function affectsPath(entryPath, candidatePath) {
 }
 
 function confirmDirtyFileOperation(entry, actionLabel) {
-  const currentPath = fileOpsElements.editorPath?.textContent?.trim()
+  const currentPath = currentEditorPath()
   const dirty = fileOpsElements.editorDirty && !fileOpsElements.editorDirty.classList.contains('hidden')
   if (!dirty || !affectsPath(entry.relativePath, currentPath)) return true
   return window.confirm(
@@ -79,6 +87,7 @@ async function renameSelectedEntry() {
   const requested = window.prompt('Nouveau nom :', entry.name)
   if (requested === null || requested.trim() === '' || requested.trim() === entry.name) return
 
+  const editorAffected = affectsPath(entry.relativePath, currentEditorPath())
   setFileOpsStatus(`Renommage de ${entry.relativePath}…`)
   try {
     const result = await fileOpsApi.workspace.renameEntry({
@@ -86,8 +95,9 @@ async function renameSelectedEntry() {
       newName: requested,
     })
     setSelectedEntry({ ...entry, relativePath: result.to, name: result.name })
-    fileOpsElements.refresh?.click()
     setFileOpsStatus(result.moved ? `${result.from} renommé en ${result.to}` : 'Aucun renommage nécessaire')
+    if (editorAffected && result.moved) reloadShellSoon()
+    else fileOpsElements.refresh?.click()
   } catch (error) {
     setFileOpsStatus(error instanceof Error ? error.message : String(error))
   }
@@ -100,12 +110,14 @@ async function trashSelectedEntry() {
   const kindLabel = entry.kind === 'directory' ? 'dossier' : 'fichier'
   if (!window.confirm(`Envoyer le ${kindLabel} « ${entry.relativePath} » dans la Corbeille Windows ?`)) return
 
+  const editorAffected = affectsPath(entry.relativePath, currentEditorPath())
   setFileOpsStatus(`Envoi de ${entry.relativePath} dans la Corbeille…`)
   try {
     await fileOpsApi.workspace.trashEntry({ relativePath: entry.relativePath })
     setSelectedEntry(undefined)
-    fileOpsElements.refresh?.click()
     setFileOpsStatus(`${entry.relativePath} envoyé dans la Corbeille Windows`)
+    if (editorAffected) reloadShellSoon()
+    else fileOpsElements.refresh?.click()
   } catch (error) {
     setFileOpsStatus(error instanceof Error ? error.message : String(error))
   }
@@ -138,6 +150,7 @@ fileOpsElements.tree?.addEventListener('contextmenu', (event) => {
   const entry = entryForFileOpsRow(row)
   if (!entry) return
   event.preventDefault()
+  for (const selected of fileOpsElements.tree.querySelectorAll('.tree-row.selected')) selected.classList.remove('selected')
   row.classList.add('selected')
   showContextMenu(event, entry)
 })
@@ -175,6 +188,7 @@ document.addEventListener('keydown', (event) => {
 window.addEventListener('workspace-entry-moved', (event) => {
   const result = event.detail
   if (!result?.to) return
+  const editorAffected = affectsPath(result.from, currentEditorPath())
   if (selectedEntry && affectsPath(result.from, selectedEntry.relativePath)) {
     const suffix = selectedEntry.relativePath.slice(result.from.length)
     setSelectedEntry({
@@ -184,6 +198,7 @@ window.addEventListener('workspace-entry-moved', (event) => {
     })
   }
   setFileOpsStatus(result.moved ? `${result.from} déplacé vers ${result.to}` : 'Élément déjà dans ce dossier')
+  if (editorAffected && result.moved) reloadShellSoon()
 })
 
 setSelectedEntry(undefined)
