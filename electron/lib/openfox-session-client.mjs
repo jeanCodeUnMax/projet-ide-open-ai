@@ -14,6 +14,12 @@ function normalizePath(value) {
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved
 }
 
+function projectNameForWorkspace(workspace) {
+  const base = path.basename(path.resolve(workspace)) || 'workspace'
+  const sanitized = base.replace(/[^a-zA-Z0-9._ -]+/g, '-').replace(/\.{2,}/g, '.').trim()
+  return sanitized || 'workspace'
+}
+
 function queueHasPending(value) {
   if (!value) return false
   if (Array.isArray(value)) return value.length > 0
@@ -25,6 +31,14 @@ function queueHasPending(value) {
 function assistantMessages(messages) {
   return (Array.isArray(messages) ? messages : [])
     .filter((message) => message?.role === 'assistant' && typeof message.content === 'string' && message.content.trim())
+}
+
+function sessionTimestamp(session) {
+  for (const key of ['updatedAt', 'lastActivityAt', 'createdAt']) {
+    const value = Date.parse(session?.[key] ?? '')
+    if (Number.isFinite(value)) return value
+  }
+  return 0
 }
 
 export class OpenFoxSessionClient {
@@ -75,6 +89,16 @@ export class OpenFoxSessionClient {
     return Array.isArray(payload.projects) ? payload.projects : []
   }
 
+  async createProject({ workspace, name = projectNameForWorkspace(workspace) } = {}) {
+    if (typeof workspace !== 'string' || workspace.trim() === '') throw new Error('Le workspace OpenFox est obligatoire.')
+    const payload = await this.request('/api/projects', {
+      method: 'POST',
+      body: { name, workdir: path.resolve(workspace) },
+    })
+    if (!payload.project?.id) throw new Error('OpenFox n’a pas renvoyé de projet valide.')
+    return payload.project
+  }
+
   async resolveProject({ workspace, projectId } = {}) {
     const projects = await this.listProjects()
     if (projectId) {
@@ -92,6 +116,49 @@ export class OpenFoxSessionClient {
       throw error
     }
     return project
+  }
+
+  async ensureProject({ workspace, name } = {}) {
+    try {
+      return await this.resolveProject({ workspace })
+    } catch (error) {
+      if (error?.code !== 'OPENFOX_PROJECT_NOT_FOUND') throw error
+      try {
+        return await this.createProject({ workspace, name })
+      } catch (createError) {
+        // A concurrent UI action may have registered the same directory.
+        const projects = await this.listProjects().catch(() => [])
+        const target = normalizePath(workspace)
+        const existing = projects.find((entry) => normalizePath(entry.workdir) === target)
+        if (existing) return existing
+        throw createError
+      }
+    }
+  }
+
+  async listSessions(projectId, { limit = 100, offset = 0 } = {}) {
+    if (!projectId) throw new Error('projectId est obligatoire pour lister les sessions OpenFox.')
+    const query = new URLSearchParams({ projectId, limit: String(limit), offset: String(offset) })
+    const payload = await this.request(`/api/sessions?${query.toString()}`)
+    return {
+      sessions: Array.isArray(payload.sessions) ? payload.sessions : [],
+      hasMore: Boolean(payload.hasMore),
+    }
+  }
+
+  selectSession(sessions, preferredSessionId) {
+    const available = Array.isArray(sessions) ? sessions : []
+    if (preferredSessionId) {
+      const preferred = available.find((session) => session.id === preferredSessionId)
+      if (preferred) return preferred
+    }
+    return [...available].sort((left, right) => sessionTimestamp(right) - sessionTimestamp(left))[0]
+  }
+
+  projectUrl(projectId, sessionId) {
+    if (!projectId) return this.baseUrl
+    const projectPath = `/p/${encodeURIComponent(projectId)}`
+    return sessionId ? `${this.baseUrl}${projectPath}/s/${encodeURIComponent(sessionId)}` : `${this.baseUrl}${projectPath}`
   }
 
   async createSession({ projectId, title } = {}) {
@@ -230,4 +297,4 @@ export class OpenFoxSessionRegistry {
   }
 }
 
-export { assistantMessages, queueHasPending }
+export { assistantMessages, normalizePath, projectNameForWorkspace, queueHasPending, sessionTimestamp }
