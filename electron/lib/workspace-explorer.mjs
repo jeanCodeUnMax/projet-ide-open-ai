@@ -1,18 +1,11 @@
 import { readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-const DEFAULT_IGNORED_NAMES = new Set([
-  '.git',
-  '.ide-ai',
-  '.openfox',
-  'node_modules',
-  'release',
-  'dist',
-  'build',
-  'coverage',
-  '.next',
-  '.cache',
-])
+// Visibility and indexing are deliberately separated. The explorer shows every
+// real file and directory returned by the operating system, including dotfiles,
+// Windows Hidden/System entries, .git, node_modules and generated directories.
+// Heavy directories may still be ignored by watchers or RAG indexing elsewhere.
+const DEFAULT_IGNORED_NAMES = new Set()
 
 const DEFAULT_MAX_FILE_BYTES = 2 * 1024 * 1024
 
@@ -115,6 +108,8 @@ export class WorkspaceExplorer {
     const entries = []
     for (const entry of await readdir(resolved.target, { withFileTypes: true })) {
       if (this.ignoredNames.has(entry.name)) continue
+      // Symbolic links stay excluded: following them could escape the workspace or
+      // create recursive loops. All regular hidden files/directories remain visible.
       if (entry.isSymbolicLink()) continue
       const absolutePath = path.join(resolved.target, entry.name)
       const kind = entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : 'other'
