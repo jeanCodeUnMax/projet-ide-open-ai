@@ -51,11 +51,14 @@ test('le preload ne remplace jamais un token OpenFox déjà présent', () => {
   )
 })
 
-test('le bootstrap installe le preload de session avant de charger le processus principal', async () => {
+test('le bootstrap installe le preload avant main sans bloquer app.whenReady', async () => {
   const source = await readFile(bootstrapUrl, 'utf8')
   assert.match(source, /session\.defaultSession\.setPreloads/)
   assert.match(source, /openfox-local-session-preload\.cjs/)
-  assert.ok(source.indexOf("app.whenReady().then") < source.indexOf("import('./main.mjs')"))
+  assert.ok(source.indexOf('app.whenReady().then') < source.indexOf("import('./main.mjs')"))
+  assert.doesNotMatch(source, /await\s+sessionPreloadReady/)
+  assert.doesNotMatch(source, /await\s+app\.whenReady\(\)/)
+  assert.match(source, /void\s+import\('\.\/main\.mjs'\)\.catch/)
 
   const packageDocument = JSON.parse(await readFile(packageUrl, 'utf8'))
   assert.equal(packageDocument.main, 'electron/bootstrap.mjs')
