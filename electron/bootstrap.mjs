@@ -5,6 +5,7 @@ import { registerEditorIpc } from './lib/editor-ipc.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const localSessionPreload = path.join(__dirname, 'openfox-local-session-preload.cjs')
+const LOCAL_SESSION_PRELOAD_ID = 'ide-open-ai-openfox-local-session'
 
 // The editor handlers do not create windows and can safely be registered before
 // app.whenReady(). Their workspace is resolved lazily for each invocation.
@@ -18,9 +19,18 @@ registerEditorIpc()
 // module to finish evaluating before completing startup, which would deadlock
 // the process before any window can be created.
 const sessionPreloadReady = app.whenReady().then(() => {
-  const current = session.defaultSession.getPreloads()
-  if (!current.includes(localSessionPreload)) {
-    session.defaultSession.setPreloads([...current, localSessionPreload])
+  const current = session.defaultSession.getPreloadScripts()
+  const alreadyRegistered = current.some((script) =>
+    script.id === LOCAL_SESSION_PRELOAD_ID
+    || path.resolve(script.filePath) === path.resolve(localSessionPreload),
+  )
+
+  if (!alreadyRegistered) {
+    session.defaultSession.registerPreloadScript({
+      type: 'frame',
+      id: LOCAL_SESSION_PRELOAD_ID,
+      filePath: localSessionPreload,
+    })
   }
 })
 
