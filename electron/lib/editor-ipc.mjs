@@ -73,7 +73,11 @@ export function registerEditorIpc() {
   ipcMain.handle('workspace:trash-entry', async (_event, payload) => {
     validateEntryPayload(payload, ['relativePath'])
     const explorer = await activeExplorer()
-    const targetPath = await explorer.absolutePath(payload.relativePath)
+    const [targetPath, info] = await Promise.all([
+      explorer.absolutePath(payload.relativePath),
+      explorer.info(),
+    ])
+    if (targetPath === info.root) throw new Error('La racine du workspace ne peut pas être envoyée dans la Corbeille.')
     await shell.trashItem(targetPath)
     return { trashed: true, relativePath: payload.relativePath, path: targetPath }
   })
