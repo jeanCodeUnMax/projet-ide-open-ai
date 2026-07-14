@@ -14,6 +14,7 @@ const required = [
   'electron/lib/openfox-provider-optimizer.mjs',
   'electron/lib/openfox-runtime.mjs',
   'electron/lib/openfox-session-client.mjs',
+  'electron/lib/openfox-windows-project-guard.cjs',
   'electron/lib/workspace-explorer.mjs',
   'electron/lib/workspace-drop-importer.mjs',
   'electron/lib/workspace-drop-ipc.mjs',
@@ -49,7 +50,7 @@ const packageDocument = JSON.parse(await readFile(new URL('../package.json', imp
 if (packageDocument.main !== 'electron/bootstrap.mjs') {
   throw new Error('Le point d’entrée Electron doit utiliser electron/bootstrap.mjs.')
 }
-if (packageDocument.build?.extraMetadata?.main !== 'electron/bootstrap.mjs') {
+if (packageDocument.build?.extraMetadata.main !== 'electron/bootstrap.mjs') {
   throw new Error('Le paquet distribué doit utiliser electron/bootstrap.mjs.')
 }
 
