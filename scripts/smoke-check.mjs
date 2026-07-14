@@ -6,6 +6,7 @@ const required = [
   'electron/main.mjs',
   'electron/preload.mjs',
   'electron/openfox-local-session-preload.cjs',
+  'electron/openfox-workflow-designer-preload.cjs',
   'electron/openfox-mistral-fetch-guard.cjs',
   'electron/lib/config-store.mjs',
   'electron/lib/editor-ipc.mjs',
