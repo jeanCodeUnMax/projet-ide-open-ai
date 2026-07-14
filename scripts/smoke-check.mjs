@@ -34,6 +34,7 @@ const required = [
   'electron/windows/ide-shell.css',
   'electron/windows/ide-shell.js',
   'electron/windows/ide-shell-dnd.js',
+  'electron/windows/ide-shell-file-ops.js',
   'electron/windows/mcp-manager.html',
   'electron/windows/mcp-manager.js',
   'electron/windows/agent-rag-dashboard.html',
@@ -51,7 +52,7 @@ const packageDocument = JSON.parse(await readFile(new URL('../package.json', imp
 if (packageDocument.main !== 'electron/bootstrap.mjs') {
   throw new Error('Le point d’entrée Electron doit utiliser electron/bootstrap.mjs.')
 }
-if (packageDocument.build?.extraMetadata.main !== 'electron/bootstrap.mjs') {
+if (packageDocument.build?.extraMetadata?.main !== 'electron/bootstrap.mjs') {
   throw new Error('Le paquet distribué doit utiliser electron/bootstrap.mjs.')
 }
 
