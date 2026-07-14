@@ -5,6 +5,7 @@ import {
   ipcMain,
   Menu,
   shell,
+  WebContentsView,
 } from 'electron'
 import net from 'node:net'
 import path from 'node:path'
@@ -27,20 +28,27 @@ import { OpenFoxRuntime } from './lib/openfox-runtime.mjs'
 import { AgentRegistryStore } from './lib/agent-registry-store.mjs'
 import { RagWorkspaceService } from './lib/rag-workspace-service.mjs'
 import { HephaistosAdapter } from './lib/hephaistos-adapter.mjs'
+import { WorkspaceExplorer, resolveWorkspaceDirectory } from './lib/workspace-explorer.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const preloadPath = path.join(__dirname, 'preload.mjs')
 const windowsDir = path.join(__dirname, 'windows')
+const shellPath = path.join(windowsDir, 'ide-shell.html')
+const LAYOUT = Object.freeze({ sidebarWidth: 320, topbarHeight: 46, statusbarHeight: 24 })
 
 let runtime
 let runtimePaths
 let mainWindow
+let openFoxView
+let openFoxViewAttached = false
+let shellMode = 'openfox'
 let mcpWindow
 let logsWindow
 let aiOsWindow
 let agentRegistryStore
 let ragService
 let ragProgressHandler
+let workspaceExplorer
 let activeWorkspace
 let quitting = false
 
@@ -66,17 +74,84 @@ async function findAvailablePort(startPort, attempts = 30) {
   throw new Error(`Aucun port disponible entre ${startPort} et ${startPort + attempts - 1}.`)
 }
 
-function secureWindow(window, allowedOrigin) {
-  window.webContents.setWindowOpenHandler(({ url }) => {
+function secureWebContents(contents, allowedOrigin) {
+  contents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
-  window.webContents.on('will-navigate', (event, url) => {
+  contents.on('will-navigate', (event, url) => {
     if (allowedOrigin && url.startsWith(allowedOrigin)) return
     if (url.startsWith('file://')) return
     event.preventDefault()
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
   })
+}
+
+function secureWindow(window, allowedOrigin) {
+  secureWebContents(window.webContents, allowedOrigin)
+}
+
+function emitRuntimeStatus(state, message) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('runtime:status', { state, message })
+  }
+}
+
+function layoutOpenFoxView() {
+  if (!mainWindow || mainWindow.isDestroyed() || !openFoxView || !openFoxViewAttached) return
+  const { width, height } = mainWindow.getContentBounds()
+  openFoxView.setBounds({
+    x: LAYOUT.sidebarWidth,
+    y: LAYOUT.topbarHeight,
+    width: Math.max(0, width - LAYOUT.sidebarWidth),
+    height: Math.max(0, height - LAYOUT.topbarHeight - LAYOUT.statusbarHeight),
+  })
+}
+
+function attachOpenFoxView() {
+  if (!mainWindow || mainWindow.isDestroyed() || !openFoxView || openFoxViewAttached) return
+  mainWindow.contentView.addChildView(openFoxView)
+  openFoxViewAttached = true
+  layoutOpenFoxView()
+}
+
+function detachOpenFoxView() {
+  if (!mainWindow || mainWindow.isDestroyed() || !openFoxView || !openFoxViewAttached) return
+  mainWindow.contentView.removeChildView(openFoxView)
+  openFoxViewAttached = false
+}
+
+function createOpenFoxView() {
+  if (openFoxView) return openFoxView
+  openFoxView = new WebContentsView({
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+  secureWebContents(openFoxView.webContents, runtime?.baseUrl)
+  openFoxView.webContents.on('did-fail-load', (_event, code, description, validatedUrl, isMainFrame) => {
+    if (!isMainFrame || code === -3) return
+    emitRuntimeStatus('error', `OpenFox indisponible : ${description} (${validatedUrl})`)
+  })
+  return openFoxView
+}
+
+async function setShellMode(mode) {
+  if (!['openfox', 'editor'].includes(mode)) throw new Error(`Mode d’interface invalide: ${String(mode)}`)
+  shellMode = mode
+  if (mode === 'openfox') attachOpenFoxView()
+  else detachOpenFoxView()
+  return { mode }
+}
+
+async function loadOpenFoxUi() {
+  createOpenFoxView()
+  emitRuntimeStatus('starting', `OpenFox : connexion à ${runtime.baseUrl}`)
+  await openFoxView.webContents.loadURL(runtime.baseUrl)
+  if (shellMode === 'openfox') attachOpenFoxView()
+  emitRuntimeStatus('ready', `OpenFox prêt · port ${runtime.port}`)
 }
 
 function createMainWindow() {
@@ -87,26 +162,42 @@ function createMainWindow() {
     minHeight: 700,
     title: 'IDE Open AI',
     show: false,
-    backgroundColor: '#0c0f14',
+    backgroundColor: '#090b0f',
     webPreferences: {
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
     },
   })
-  secureWindow(mainWindow, runtime?.baseUrl)
+  secureWindow(mainWindow)
+  mainWindow.on('resize', layoutOpenFoxView)
   mainWindow.once('ready-to-show', () => mainWindow?.show())
   mainWindow.on('closed', () => {
+    openFoxViewAttached = false
+    openFoxView = undefined
     mainWindow = undefined
   })
 }
 
-async function showStartupError(error) {
-  if (!mainWindow) createMainWindow()
-  const message = error instanceof Error ? error.message : String(error)
-  const html = `<!doctype html><html lang="fr"><meta charset="utf-8"><style>body{font-family:system-ui;background:#0c0f14;color:#eee;padding:48px;line-height:1.5}pre{white-space:pre-wrap;background:#171b23;padding:20px;border-radius:12px;color:#ffb4b4}</style><h1>Échec du démarrage d’OpenFox</h1><p>Consulte le journal depuis le menu <strong>Exécution → Journaux</strong>.</p><pre>${escapeHtml(message)}</pre></html>`
-  await mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+async function loadShell() {
+  if (!mainWindow || mainWindow.isDestroyed()) createMainWindow()
+  await mainWindow.loadFile(shellPath)
   mainWindow.show()
+}
+
+async function showStartupError(error) {
+  const message = error instanceof Error ? error.message : String(error)
+  if (!mainWindow || mainWindow.isDestroyed()) createMainWindow()
+  try {
+    await loadShell()
+    detachOpenFoxView()
+    emitRuntimeStatus('error', message)
+  } catch {
+    const html = `<!doctype html><html lang="fr"><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><style>body{font-family:system-ui;background:#0c0f14;color:#eee;padding:48px;line-height:1.5}pre{white-space:pre-wrap;background:#171b23;padding:20px;border-radius:12px;color:#ffb4b4}</style><h1>Échec du démarrage d’OpenFox</h1><pre>${escapeHtml(message)}</pre></html>`
+    await mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+    mainWindow.show()
+  }
 }
 
 function escapeHtml(value) {
@@ -114,10 +205,7 @@ function escapeHtml(value) {
 }
 
 function openMcpManager() {
-  if (mcpWindow && !mcpWindow.isDestroyed()) {
-    mcpWindow.focus()
-    return
-  }
+  if (mcpWindow && !mcpWindow.isDestroyed()) return mcpWindow.focus()
   mcpWindow = new BrowserWindow({
     width: 1120,
     height: 820,
@@ -125,42 +213,25 @@ function openMcpManager() {
     minHeight: 650,
     title: 'Gestionnaire MCP — IDE Open AI',
     parent: mainWindow,
-    webPreferences: {
-      preload: preloadPath,
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
+    webPreferences: { preload: preloadPath, contextIsolation: true, nodeIntegration: false, sandbox: true },
   })
   secureWindow(mcpWindow)
   void mcpWindow.loadFile(path.join(windowsDir, 'mcp-manager.html'))
-  mcpWindow.on('closed', () => {
-    mcpWindow = undefined
-  })
+  mcpWindow.on('closed', () => { mcpWindow = undefined })
 }
 
 function openLogsWindow() {
-  if (logsWindow && !logsWindow.isDestroyed()) {
-    logsWindow.focus()
-    return
-  }
+  if (logsWindow && !logsWindow.isDestroyed()) return logsWindow.focus()
   logsWindow = new BrowserWindow({
     width: 1000,
     height: 680,
     title: 'Journaux OpenFox — IDE Open AI',
     parent: mainWindow,
-    webPreferences: {
-      preload: preloadPath,
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
+    webPreferences: { preload: preloadPath, contextIsolation: true, nodeIntegration: false, sandbox: true },
   })
   secureWindow(logsWindow)
   void logsWindow.loadFile(path.join(windowsDir, 'logs.html'))
-  logsWindow.on('closed', () => {
-    logsWindow = undefined
-  })
+  logsWindow.on('closed', () => { logsWindow = undefined })
 }
 
 function initializeWorkspaceServices() {
@@ -170,6 +241,8 @@ function initializeWorkspaceServices() {
     builtinCardPath: path.join(__dirname, '..', 'config', 'agents', 'orchestrator.agent-card.json'),
   })
   ragService = RagWorkspaceService.fromEnvironment({ workspace: activeWorkspace })
+  workspaceExplorer ??= new WorkspaceExplorer({ workspace: activeWorkspace })
+  workspaceExplorer.setWorkspace(activeWorkspace)
   ragProgressHandler = (event) => {
     if (aiOsWindow && !aiOsWindow.isDestroyed()) aiOsWindow.webContents.send('rag:progress', event)
   }
@@ -177,10 +250,7 @@ function initializeWorkspaceServices() {
 }
 
 function openAiOsWindow() {
-  if (aiOsWindow && !aiOsWindow.isDestroyed()) {
-    aiOsWindow.focus()
-    return
-  }
+  if (aiOsWindow && !aiOsWindow.isDestroyed()) return aiOsWindow.focus()
   aiOsWindow = new BrowserWindow({
     width: 1280,
     height: 880,
@@ -188,18 +258,11 @@ function openAiOsWindow() {
     minHeight: 680,
     title: 'Agents et Knowledge — IDE Open AI',
     parent: mainWindow,
-    webPreferences: {
-      preload: preloadPath,
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
+    webPreferences: { preload: preloadPath, contextIsolation: true, nodeIntegration: false, sandbox: true },
   })
   secureWindow(aiOsWindow)
   void aiOsWindow.loadFile(path.join(windowsDir, 'agent-rag-dashboard.html'))
-  aiOsWindow.on('closed', () => {
-    aiOsWindow = undefined
-  })
+  aiOsWindow.on('closed', () => { aiOsWindow = undefined })
 }
 
 function installMenu() {
@@ -207,20 +270,15 @@ function installMenu() {
     {
       label: 'Projet',
       submenu: [
-        {
-          label: 'Ouvrir un workspace…',
-          accelerator: 'CmdOrCtrl+O',
-          click: () => void chooseWorkspace(),
-        },
+        { label: 'Ouvrir un workspace…', accelerator: 'CmdOrCtrl+O', click: () => void chooseWorkspace() },
+        { label: 'Actualiser l’explorateur', accelerator: 'CmdOrCtrl+R', click: () => mainWindow?.webContents.send('workspace:changed', { workspace: activeWorkspace }) },
         { type: 'separator' },
         { role: process.platform === 'darwin' ? 'close' : 'quit' },
       ],
     },
     {
       label: 'AI OS',
-      submenu: [
-        { label: 'Agents et Knowledge…', accelerator: 'CmdOrCtrl+Shift+K', click: openAiOsWindow },
-      ],
+      submenu: [{ label: 'Agents et Knowledge…', accelerator: 'CmdOrCtrl+Shift+K', click: openAiOsWindow }],
     },
     {
       label: 'MCP',
@@ -230,18 +288,21 @@ function installMenu() {
       ],
     },
     {
-      label: 'Exécution',
+      label: 'Affichage',
       submenu: [
-        { label: 'Journaux', click: openLogsWindow },
-        { label: 'Recharger l’interface', role: 'reload' },
-        { label: 'Outils de développement', role: 'toggleDevTools' },
+        { label: 'OpenFox', accelerator: 'CmdOrCtrl+1', click: () => void setShellMode('openfox') },
+        { type: 'separator' },
+        { role: 'reload' },
+        { role: 'toggleDevTools' },
       ],
     },
     {
+      label: 'Exécution',
+      submenu: [{ label: 'Journaux', click: openLogsWindow }],
+    },
+    {
       label: 'Aide',
-      submenu: [
-        { label: 'Dépôt OpenFox', click: () => void shell.openExternal('https://github.com/co-l/openfox') },
-      ],
+      submenu: [{ label: 'Dépôt OpenFox', click: () => void shell.openExternal('https://github.com/co-l/openfox') }],
     },
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
@@ -263,7 +324,6 @@ async function enforceToolLimit() {
   const before = await apiRequest('/api/mcp/servers')
   let retained = 0
   const autoDisabled = []
-
   for (const server of before.servers) {
     for (const tool of server.tools) {
       if (!tool.enabled) continue
@@ -278,7 +338,6 @@ async function enforceToolLimit() {
       autoDisabled.push(`${server.name}:${tool.name}`)
     }
   }
-
   if (autoDisabled.length > 0) {
     const after = await apiRequest('/api/mcp/servers')
     for (const server of after.servers) {
@@ -290,40 +349,58 @@ async function enforceToolLimit() {
 }
 
 async function restartRuntime() {
+  emitRuntimeStatus('starting', 'OpenFox : redémarrage…')
+  detachOpenFoxView()
   await runtime.restart({ workspace: activeWorkspace })
   const autoDisabled = await enforceToolLimit()
-  if (mainWindow && !mainWindow.isDestroyed()) await mainWindow.loadURL(runtime.baseUrl)
+  await loadOpenFoxUi()
   return { success: true, autoDisabled }
+}
+
+async function switchWorkspace(candidate) {
+  const resolved = await resolveWorkspaceDirectory(candidate)
+  activeWorkspace = resolved
+  await setWorkspace(runtimePaths, activeWorkspace)
+  initializeWorkspaceServices()
+  mainWindow?.webContents.send('workspace:changed', { workspace: activeWorkspace })
+  await restartRuntime()
+  return { canceled: false, workspace: activeWorkspace }
 }
 
 async function chooseWorkspace() {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Choisir le workspace du projet',
+    defaultPath: activeWorkspace,
+    buttonLabel: 'Ouvrir ce dossier',
     properties: ['openDirectory', 'createDirectory'],
   })
   if (result.canceled || !result.filePaths[0]) return { canceled: true }
-  activeWorkspace = result.filePaths[0]
-  await setWorkspace(runtimePaths, activeWorkspace)
-  initializeWorkspaceServices()
-  await restartRuntime()
-  return { canceled: false, workspace: activeWorkspace }
+  return switchWorkspace(result.filePaths[0])
 }
 
 function registerIpc() {
-  ipcMain.handle('app:info', () => ({ version: app.getVersion(), workspace: activeWorkspace, port: runtime.port }))
+  ipcMain.handle('app:info', () => ({ version: app.getVersion(), workspace: activeWorkspace, port: runtime?.port, mode: shellMode }))
   ipcMain.handle('runtime:logs', () => runtime.getLogs())
   ipcMain.handle('runtime:restart', () => restartRuntime())
+  ipcMain.handle('layout:set-mode', (_event, mode) => setShellMode(mode))
+
+  ipcMain.handle('workspace:current', () => workspaceExplorer.info())
   ipcMain.handle('workspace:choose', () => chooseWorkspace())
+  ipcMain.handle('workspace:open-path', (_event, workspacePath) => switchWorkspace(workspacePath))
+  ipcMain.handle('workspace:list', (_event, relativePath = '') => workspaceExplorer.list(relativePath))
+  ipcMain.handle('workspace:read-file', (_event, relativePath) => workspaceExplorer.read(relativePath))
+  ipcMain.handle('workspace:reveal', async (_event, relativePath) => {
+    const target = await workspaceExplorer.absolutePath(relativePath)
+    shell.showItemInFolder(target)
+    return { revealed: true, path: target }
+  })
 
   ipcMain.handle('ai-os:status', async () => {
     const hephaistos = HephaistosAdapter.fromEnv()
     return {
       workspace: activeWorkspace,
       rag: ragService.status(),
-      hephaistos: {
-        configured: Boolean(hephaistos),
-        available: hephaistos ? await hephaistos.isAvailable() : false,
-      },
+      hephaistos: { configured: Boolean(hephaistos), available: hephaistos ? await hephaistos.isAvailable() : false },
     }
   })
 
@@ -354,9 +431,7 @@ function registerIpc() {
   ipcMain.handle('rag:choose-files', async () => {
     const selection = await dialog.showOpenDialog(aiOsWindow ?? mainWindow, {
       title: 'Ajouter des documents au RAG',
-      filters: [
-        { name: 'Documents pris en charge', extensions: ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'tif', 'tiff', 'md', 'txt', 'json'] },
-      ],
+      filters: [{ name: 'Documents pris en charge', extensions: ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'tif', 'tiff', 'md', 'txt', 'json'] }],
       properties: ['openFile', 'multiSelections'],
     })
     return { canceled: selection.canceled, filePaths: selection.filePaths }
@@ -393,51 +468,38 @@ function registerIpc() {
     const canonical = await loadCanonicalMcp(runtimePaths)
     return { ...data, toolLimit: canonical.toolLimit }
   })
-
   ipcMain.handle('mcp:test', async (_event, payload) => {
     checkChannelPayload(payload, ['name'])
     const config = validateServerConfig(payload.name, payload)
     const resolved = resolveEnvPlaceholders(config, { ...process.env, WORKSPACE_PATH: activeWorkspace })
-    return apiRequest('/api/mcp/servers/test', {
-      method: 'POST',
-      body: JSON.stringify({ name: payload.name, ...resolved }),
-    })
+    return apiRequest('/api/mcp/servers/test', { method: 'POST', body: JSON.stringify({ name: payload.name, ...resolved }) })
   })
-
   ipcMain.handle('mcp:add', async (_event, payload) => {
     checkChannelPayload(payload, ['name'])
     const config = validateServerConfig(payload.name, payload)
     const resolved = resolveEnvPlaceholders(config, { ...process.env, WORKSPACE_PATH: activeWorkspace })
-    const result = await apiRequest('/api/mcp/servers', {
-      method: 'POST',
-      body: JSON.stringify({ name: payload.name, ...resolved }),
-    })
+    const result = await apiRequest('/api/mcp/servers', { method: 'POST', body: JSON.stringify({ name: payload.name, ...resolved }) })
     await upsertCanonicalServer(runtimePaths, payload.name, config)
     const autoDisabled = await enforceToolLimit()
     return { ...result, autoDisabled }
   })
-
   ipcMain.handle('mcp:remove', async (_event, name) => {
     if (typeof name !== 'string') throw new Error('Nom MCP invalide.')
     await apiRequest(`/api/mcp/servers/${encodeURIComponent(name)}`, { method: 'DELETE' })
     await removeCanonicalServer(runtimePaths, name)
     return { success: true }
   })
-
   ipcMain.handle('mcp:toggle-tool', async (_event, payload) => {
     checkChannelPayload(payload, ['serverName', 'toolName', 'enabled'])
     const before = await apiRequest('/api/mcp/servers')
     const canonical = await loadCanonicalMcp(runtimePaths)
-    const enabledCount = before.servers
-      .flatMap((server) => server.tools)
-      .filter((tool) => tool.enabled).length
+    const enabledCount = before.servers.flatMap((server) => server.tools).filter((tool) => tool.enabled).length
     const targetServer = before.servers.find((server) => server.name === payload.serverName)
     const targetTool = targetServer?.tools.find((tool) => tool.name === payload.toolName)
     if (!targetTool) throw new Error('Outil MCP introuvable.')
     if (payload.enabled === true && targetTool.enabled === false && enabledCount >= canonical.toolLimit) {
       throw new Error(`Limite atteinte: ${canonical.toolLimit} outils MCP actifs maximum.`)
     }
-
     await apiRequest(
       `/api/mcp/servers/${encodeURIComponent(payload.serverName)}/tools/${encodeURIComponent(payload.toolName)}`,
       { method: 'PUT', body: JSON.stringify({ enabled: Boolean(payload.enabled) }) },
@@ -448,7 +510,6 @@ function registerIpc() {
     await updateCanonicalDisabledTools(runtimePaths, payload.serverName, disabledTools)
     return { success: true }
   })
-
   ipcMain.handle('mcp:import', async () => {
     const selection = await dialog.showOpenDialog(mcpWindow ?? mainWindow, {
       title: 'Importer une configuration MCP',
@@ -462,7 +523,6 @@ function registerIpc() {
     await restartRuntime()
     return { canceled: false, serverCount: Object.keys(normalized.mcpServers).length }
   })
-
   ipcMain.handle('mcp:export', async () => {
     const selection = await dialog.showSaveDialog(mcpWindow ?? mainWindow, {
       title: 'Exporter la configuration MCP',
@@ -480,22 +540,32 @@ function registerIpc() {
 async function boot() {
   runtimePaths = createRuntimePaths(app.getPath('userData'))
   const settings = await loadDesktopSettings(runtimePaths)
-  activeWorkspace = settings.workspace || app.getPath('documents')
+  const preferredWorkspace = settings.workspace || process.cwd()
+  activeWorkspace = await resolveWorkspaceDirectory(preferredWorkspace)
+    .catch(() => resolveWorkspaceDirectory(app.getPath('documents')))
+  workspaceExplorer = new WorkspaceExplorer({ workspace: activeWorkspace })
   initializeWorkspaceServices()
+
   const port = await findAvailablePort(Number(process.env.OPENAI_IDE_PORT || 10369))
   runtime = new OpenFoxRuntime({ paths: runtimePaths, port, workspace: activeWorkspace })
   createMainWindow()
   registerIpc()
   installMenu()
+  await loadShell()
+  mainWindow.webContents.send('workspace:changed', { workspace: activeWorkspace })
 
   runtime.on('unexpected-exit', ({ code }) => {
-    if (!quitting) void showStartupError(new Error(`OpenFox s’est arrêté de manière inattendue (code ${code}).`))
+    if (!quitting) {
+      detachOpenFoxView()
+      emitRuntimeStatus('error', `OpenFox s’est arrêté de manière inattendue (code ${code}).`)
+    }
   })
 
   try {
+    emitRuntimeStatus('starting', 'OpenFox : démarrage…')
     await runtime.start()
     await enforceToolLimit()
-    await mainWindow.loadURL(runtime.baseUrl)
+    await loadOpenFoxUi()
   } catch (error) {
     await showStartupError(error)
   }
@@ -516,7 +586,7 @@ app.whenReady().then(boot).catch(showStartupError)
 app.on('activate', () => {
   if (!mainWindow && runtime) {
     createMainWindow()
-    void mainWindow.loadURL(runtime.baseUrl)
+    void loadShell().then(() => loadOpenFoxUi()).catch(showStartupError)
   }
 })
 
@@ -524,6 +594,7 @@ app.on('before-quit', (event) => {
   if (quitting || !runtime) return
   event.preventDefault()
   quitting = true
+  detachOpenFoxView()
   runtime.stop().finally(() => app.quit())
 })
 
