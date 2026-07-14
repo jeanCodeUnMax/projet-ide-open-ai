@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron'
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 function subscribe(channel, listener) {
   const handler = (_event, payload) => listener(payload)
