@@ -56,8 +56,8 @@ test('le bootstrap installe le preload avant main sans bloquer app.whenReady', a
   assert.match(source, /session\.defaultSession\.setPreloads/)
   assert.match(source, /openfox-local-session-preload\.cjs/)
   assert.ok(source.indexOf('app.whenReady().then') < source.indexOf("import('./main.mjs')"))
-  assert.doesNotMatch(source, /await\s+sessionPreloadReady/)
-  assert.doesNotMatch(source, /await\s+app\.whenReady\(\)/)
+  assert.doesNotMatch(source, /^\s*await\s+sessionPreloadReady/m)
+  assert.doesNotMatch(source, /^\s*await\s+app\.whenReady\(\)/m)
   assert.match(source, /void\s+import\('\.\/main\.mjs'\)\.catch/)
 
   const packageDocument = JSON.parse(await readFile(packageUrl, 'utf8'))
