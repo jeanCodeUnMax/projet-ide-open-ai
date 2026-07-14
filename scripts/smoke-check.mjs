@@ -11,6 +11,7 @@ const required = [
   'electron/lib/editor-ipc.mjs',
   'electron/lib/external-editor.mjs',
   'electron/lib/mistral-request-sanitizer.cjs',
+  'electron/lib/openfox-hidden-files-guard.cjs',
   'electron/lib/openfox-provider-optimizer.mjs',
   'electron/lib/openfox-runtime.mjs',
   'electron/lib/openfox-session-client.mjs',
