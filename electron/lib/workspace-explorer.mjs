@@ -1,4 +1,4 @@
-import { readFile, readdir, realpath, stat } from 'node:fs/promises'
+import { readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 const DEFAULT_IGNORED_NAMES = new Set([
@@ -159,6 +159,32 @@ export class WorkspaceExplorer {
       binary,
       content: binary ? '' : buffer.toString('utf8'),
     }
+  }
+
+  async write(relativePath, content, { expectedModifiedAt } = {}) {
+    if (typeof content !== 'string') throw new Error('Le contenu du fichier doit être une chaîne de caractères.')
+    const contentBytes = Buffer.byteLength(content, 'utf8')
+    if (contentBytes > this.maxFileBytes) {
+      throw new Error(`Fichier trop volumineux pour l’éditeur (${contentBytes} octets, maximum ${this.maxFileBytes}).`)
+    }
+
+    const resolved = await this.#resolveExisting(relativePath)
+    const details = await stat(resolved.target)
+    if (!details.isFile()) throw new Error('Le chemin demandé n’est pas un fichier.')
+
+    const currentBuffer = await readFile(resolved.target)
+    if (looksBinary(currentBuffer)) throw new Error('Les fichiers binaires ne peuvent pas être modifiés dans l’éditeur intégré.')
+
+    const currentModifiedAt = details.mtime.toISOString()
+    if (expectedModifiedAt && expectedModifiedAt !== currentModifiedAt) {
+      const error = new Error('Conflit de sauvegarde : le fichier a été modifié sur le disque depuis son ouverture. Recharge-le avant d’enregistrer.')
+      error.code = 'FILE_CONFLICT'
+      error.currentModifiedAt = currentModifiedAt
+      throw error
+    }
+
+    await writeFile(resolved.target, content, { encoding: 'utf8', flag: 'w' })
+    return this.read(resolved.relativePath)
   }
 
   async absolutePath(relativePath = '') {
