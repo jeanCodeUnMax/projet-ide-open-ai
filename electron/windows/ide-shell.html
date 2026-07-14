@@ -9,7 +9,7 @@
 </head>
 <body>
   <div class="ide-shell">
-    <aside class="sidebar" aria-label="Explorateur du workspace">
+    <aside id="workspace-sidebar" class="sidebar" aria-label="Explorateur du workspace">
       <div class="sidebar-header">
         <div>
           <div class="eyebrow">EXPLORATEUR</div>
@@ -39,6 +39,11 @@
 
       <div id="tree-status" class="tree-status" role="status">Chargement du workspace…</div>
       <div id="workspace-tree" class="workspace-tree" role="tree" aria-label="Fichiers et dossiers"></div>
+      <div id="workspace-drop-overlay" class="workspace-drop-overlay hidden" aria-hidden="true">
+        <div class="drop-overlay-icon">⇩</div>
+        <strong id="workspace-drop-title">Déposer dans le workspace</strong>
+        <span id="workspace-drop-target">Racine du projet</span>
+      </div>
     </aside>
 
     <main class="workbench">
