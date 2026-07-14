@@ -5,18 +5,36 @@ import os from 'node:os'
 import path from 'node:path'
 import { WorkspaceExplorer, resolveWorkspaceDirectory } from '../electron/lib/workspace-explorer.mjs'
 
-test('WorkspaceExplorer liste les dossiers avant les fichiers et masque les répertoires lourds', async () => {
+test('WorkspaceExplorer liste tous les dossiers et fichiers cachés avant les fichiers ordinaires', async () => {
   const workspace = await mkdtemp(path.join(os.tmpdir(), 'ide-workspace-'))
-  await mkdir(path.join(workspace, 'src'))
+  await mkdir(path.join(workspace, '.git'))
+  await mkdir(path.join(workspace, '.vscode'))
   await mkdir(path.join(workspace, 'node_modules'))
+  await mkdir(path.join(workspace, 'src'))
+  await writeFile(path.join(workspace, '.env'), 'SECRET=local\n', 'utf8')
   await writeFile(path.join(workspace, 'README.md'), '# Projet\n', 'utf8')
   await writeFile(path.join(workspace, 'zeta.txt'), 'zeta', 'utf8')
 
   const explorer = new WorkspaceExplorer({ workspace })
   const result = await explorer.list()
 
-  assert.deepEqual(result.entries.map((entry) => entry.name), ['src', 'README.md', 'zeta.txt'])
+  assert.deepEqual(
+    result.entries.map((entry) => entry.name),
+    ['.git', '.vscode', 'node_modules', 'src', '.env', 'README.md', 'zeta.txt'],
+  )
   assert.equal(result.entries[0].kind, 'directory')
+  assert.equal(result.entries.find((entry) => entry.name === '.env')?.kind, 'file')
+})
+
+test('WorkspaceExplorer conserve un filtre explicite lorsque le caller en demande un', async () => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'ide-workspace-filter-'))
+  await mkdir(path.join(workspace, '.git'))
+  await mkdir(path.join(workspace, 'src'))
+
+  const explorer = new WorkspaceExplorer({ workspace, ignoredNames: ['.git'] })
+  const result = await explorer.list()
+
+  assert.deepEqual(result.entries.map((entry) => entry.name), ['src'])
 })
 
 test('WorkspaceExplorer lit un fichier texte avec ses métadonnées', async () => {
