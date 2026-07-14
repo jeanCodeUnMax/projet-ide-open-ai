@@ -8,9 +8,10 @@ import {
 
 const runtimeUrl = new URL('../electron/lib/openfox-runtime.mjs', import.meta.url)
 
-test('le garde retire les champs de raisonnement internes des messages assistant Mistral', () => {
+test('le garde retire les champs de raisonnement internes et les options backend des requêtes Mistral', () => {
   const payload = {
     model: 'mistral-small-latest',
+    chat_template_kwargs: { enable_thinking: true },
     messages: [
       { role: 'user', content: 'HI' },
       {
@@ -28,13 +29,16 @@ test('le garde retire les champs de raisonnement internes des messages assistant
   })
 
   assert.notEqual(sanitized, payload)
+  assert.equal('chat_template_kwargs' in sanitized, false)
   assert.deepEqual(sanitized.messages[1], { role: 'assistant', content: 'Bonjour' })
   assert.equal(payload.messages[1].reasoning, 'raisonnement interne')
+  assert.deepEqual(payload.chat_template_kwargs, { enable_thinking: true })
 })
 
 test('le garde conserve les champs pour un fournisseur non Mistral', () => {
   const payload = {
     model: 'provider-reasoning-model',
+    chat_template_kwargs: { enable_thinking: true },
     messages: [{ role: 'assistant', content: 'ok', reasoning: 'supported' }],
   }
 
@@ -56,11 +60,13 @@ test('le garde fetch réécrit uniquement le corps JSON Mistral', async () => {
     method: 'POST',
     body: JSON.stringify({
       model: 'devstral-2512',
+      chat_template_kwargs: { enable_thinking: true },
       messages: [{ role: 'assistant', content: 'ok', reasoning: 'remove me' }],
     }),
   })
 
   const sent = JSON.parse(calls[0].init.body)
+  assert.equal('chat_template_kwargs' in sent, false)
   assert.deepEqual(sent.messages[0], { role: 'assistant', content: 'ok' })
 })
 
