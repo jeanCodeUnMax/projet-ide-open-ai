@@ -38,12 +38,19 @@ contextBridge.exposeInMainWorld('desktopAPI', {
   },
   workspace: {
     current: () => ipcRenderer.invoke('workspace:current'),
+    syncStatus: () => ipcRenderer.invoke('workspace:sync-status'),
+    refreshSessions: () => ipcRenderer.invoke('workspace:refresh-sessions'),
     choose: () => ipcRenderer.invoke('workspace:choose'),
     openPath: (workspacePath) => ipcRenderer.invoke('workspace:open-path', workspacePath),
     list: (relativePath = '') => ipcRenderer.invoke('workspace:list', relativePath),
     readFile: (relativePath) => ipcRenderer.invoke('workspace:read-file', relativePath),
     reveal: (relativePath) => ipcRenderer.invoke('workspace:reveal', relativePath),
     onChanged: (listener) => subscribe('workspace:changed', listener),
+    onSyncStatus: (listener) => subscribe('workspace:sync-status', listener),
+    onFilesChanged: (listener) => subscribe('workspace:files-changed', listener),
+  },
+  openFox: {
+    onNavigated: (listener) => subscribe('openfox:navigated', listener),
   },
   layout: {
     setMode: (mode) => ipcRenderer.invoke('layout:set-mode', mode),
