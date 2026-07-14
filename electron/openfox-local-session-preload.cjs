@@ -8,6 +8,26 @@ function isLoopbackOpenFoxPage() {
   return location.protocol === 'http:' && loopbackHosts.has(location.hostname)
 }
 
+function installWindowsProjectSelectionGuard() {
+  try {
+    const { contextBridge, webFrame } = require('electron')
+    const { installOpenFoxWindowsProjectGuard } = require('./lib/openfox-windows-project-guard.cjs')
+
+    if (typeof contextBridge?.executeInMainWorld === 'function') {
+      contextBridge.executeInMainWorld({ func: installOpenFoxWindowsProjectGuard })
+      return true
+    }
+
+    if (typeof webFrame?.executeJavaScript === 'function') {
+      void webFrame.executeJavaScript(`(${installOpenFoxWindowsProjectGuard.toString()})()`, true)
+      return true
+    }
+  } catch (error) {
+    console.error('[IDE-AI] Correctif du sélecteur de dossier OpenFox indisponible.', error)
+  }
+  return false
+}
+
 function readWorkspaceEntry(dataTransfer) {
   if (!dataTransfer) return undefined
 
@@ -119,6 +139,7 @@ try {
     const key = 'openfox_token'
     const marker = 'ide-open-ai-local-loopback'
     if (!localStorage.getItem(key)) localStorage.setItem(key, marker)
+    installWindowsProjectSelectionGuard()
     installWorkspaceDropBridge()
   }
 } catch {
