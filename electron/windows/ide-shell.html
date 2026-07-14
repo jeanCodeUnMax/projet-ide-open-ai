@@ -55,7 +55,7 @@
         <span id="runtime-state" class="runtime-state starting">OpenFox : démarrage…</span>
       </header>
 
-      <section id="editor-panel" class="editor-panel hidden" aria-label="Aperçu du fichier">
+      <section id="editor-panel" class="editor-panel hidden" aria-label="Éditeur de fichier">
         <div class="editor-toolbar">
           <div>
             <div id="editor-file-name" class="editor-file-name">Aucun fichier ouvert</div>
@@ -63,10 +63,14 @@
           </div>
           <div class="editor-actions">
             <span id="editor-file-meta" class="editor-file-meta"></span>
-            <button id="reveal-file" type="button">Afficher dans l’Explorateur Windows</button>
+            <span id="editor-dirty" class="editor-dirty hidden">Modifié</span>
+            <button id="save-file" class="primary-action" type="button" disabled>Enregistrer</button>
+            <button id="open-vscode" class="secondary-action" type="button">Ouvrir avec VS Code</button>
+            <button id="reveal-file" class="secondary-action" type="button">Afficher dans l’Explorateur Windows</button>
           </div>
         </div>
-        <pre class="editor-surface"><code id="editor-content"></code></pre>
+        <textarea id="editor-content" class="editor-surface" spellcheck="false" autocomplete="off" aria-label="Contenu du fichier"></textarea>
+        <div id="editor-readonly-note" class="editor-readonly-note hidden" role="status"></div>
       </section>
 
       <section id="welcome-panel" class="welcome-panel">
