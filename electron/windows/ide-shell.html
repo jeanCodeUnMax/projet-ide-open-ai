@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>IDE Open AI</title>
+  <link rel="stylesheet" href="./ide-shell.css">
+</head>
+<body>
+  <div class="ide-shell">
+    <aside class="sidebar" aria-label="Explorateur du workspace">
+      <div class="sidebar-header">
+        <div>
+          <div class="eyebrow">EXPLORATEUR</div>
+          <div id="workspace-name" class="workspace-name">Workspace</div>
+        </div>
+        <div class="header-actions">
+          <button id="choose-workspace" class="icon-button" type="button" title="Ouvrir un dossier sur C:, D:, E: ou un autre disque">📂</button>
+          <button id="refresh-tree" class="icon-button" type="button" title="Actualiser l’arborescence">↻</button>
+        </div>
+      </div>
+
+      <form id="workspace-path-form" class="path-form">
+        <label class="sr-only" for="workspace-path">Chemin du workspace</label>
+        <input id="workspace-path" type="text" autocomplete="off" spellcheck="false" placeholder="E:\projets\mon-projet">
+        <button type="submit" title="Ouvrir ce chemin">Ouvrir</button>
+      </form>
+
+      <div id="tree-status" class="tree-status" role="status">Chargement du workspace…</div>
+      <div id="workspace-tree" class="workspace-tree" role="tree" aria-label="Fichiers et dossiers"></div>
+    </aside>
+
+    <main class="workbench">
+      <header class="workbench-tabs" aria-label="Onglets de travail">
+        <button id="openfox-tab" class="tab active" type="button">
+          <span class="tab-icon">🤖</span>
+          <span>OpenFox</span>
+        </button>
+        <button id="file-tab" class="tab hidden" type="button">
+          <span id="file-tab-icon" class="tab-icon">📄</span>
+          <span id="file-tab-label">Fichier</span>
+        </button>
+        <div class="tab-spacer"></div>
+        <span id="runtime-state" class="runtime-state starting">OpenFox : démarrage…</span>
+      </header>
+
+      <section id="editor-panel" class="editor-panel hidden" aria-label="Aperçu du fichier">
+        <div class="editor-toolbar">
+          <div>
+            <div id="editor-file-name" class="editor-file-name">Aucun fichier ouvert</div>
+            <div id="editor-file-path" class="editor-file-path"></div>
+          </div>
+          <div class="editor-actions">
+            <span id="editor-file-meta" class="editor-file-meta"></span>
+            <button id="reveal-file" type="button">Afficher dans l’Explorateur Windows</button>
+          </div>
+        </div>
+        <pre class="editor-surface"><code id="editor-content"></code></pre>
+      </section>
+
+      <section id="welcome-panel" class="welcome-panel">
+        <div class="welcome-card">
+          <div class="welcome-logo">IDE</div>
+          <h1>IDE Open AI</h1>
+          <p>Sélectionne un fichier dans l’arborescence à gauche, ou reviens à l’onglet OpenFox.</p>
+          <div class="welcome-actions">
+            <button id="welcome-open-folder" type="button">Ouvrir un workspace</button>
+            <button id="welcome-open-openfox" type="button" class="secondary">Afficher OpenFox</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="statusbar">
+      <span id="status-workspace">Aucun workspace</span>
+      <span class="status-spacer"></span>
+      <span id="status-message">Prêt</span>
+    </footer>
+  </div>
+  <script src="./ide-shell.js"></script>
+</body>
+</html>
