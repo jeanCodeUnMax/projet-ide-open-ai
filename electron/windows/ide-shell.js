@@ -28,6 +28,10 @@ const elements = {
   editorFilePath: document.querySelector('#editor-file-path'),
   editorFileMeta: document.querySelector('#editor-file-meta'),
   editorContent: document.querySelector('#editor-content'),
+  editorDirty: document.querySelector('#editor-dirty'),
+  editorReadonlyNote: document.querySelector('#editor-readonly-note'),
+  saveFile: document.querySelector('#save-file'),
+  openVSCode: document.querySelector('#open-vscode'),
   revealFile: document.querySelector('#reveal-file'),
   statusWorkspace: document.querySelector('#status-workspace'),
   statusMessage: document.querySelector('#status-message'),
@@ -41,10 +45,12 @@ const state = {
   selectedPath: undefined,
   currentFile: undefined,
   mode: 'openfox',
+  dirty: false,
+  saving: false,
+  externalChanged: false,
   expandedPaths: new Set(),
   refreshPromise: undefined,
   refreshTimer: undefined,
-  sessionRefreshTimer: undefined,
 }
 
 function errorMessage(error) {
@@ -104,6 +110,23 @@ function markSelected(row, relativePath) {
   state.selectedRow.classList.add('selected')
 }
 
+function setDirty(dirty, { conflict = state.externalChanged } = {}) {
+  state.dirty = Boolean(dirty)
+  state.externalChanged = state.dirty && Boolean(conflict)
+  elements.editorDirty.classList.toggle('hidden', !state.dirty)
+  elements.editorDirty.classList.toggle('conflict', state.externalChanged)
+  elements.editorDirty.textContent = state.externalChanged ? 'Conflit externe' : 'Modifié'
+  elements.saveFile.disabled = !state.dirty || state.saving || Boolean(state.currentFile?.binary)
+  if (state.currentFile) {
+    elements.fileTabLabel.textContent = `${state.currentFile.name}${state.dirty ? ' ●' : ''}`
+  }
+}
+
+function confirmDiscardChanges() {
+  if (!state.dirty) return true
+  return window.confirm(`Le fichier « ${state.currentFile?.name ?? 'ouvert'} » contient des modifications non enregistrées. Les abandonner ?`)
+}
+
 async function setMode(mode) {
   state.mode = mode
   await api.layout.setMode(mode)
@@ -115,26 +138,78 @@ async function setMode(mode) {
 
 function displayFile(file, entry) {
   state.currentFile = file
+  state.externalChanged = false
   elements.fileTab.classList.remove('hidden')
   elements.fileTabIcon.textContent = entry ? iconForEntry(entry) : '📄'
-  elements.fileTabLabel.textContent = file.name
   elements.fileTab.title = file.relativePath
   elements.editorFileName.textContent = file.name
   elements.editorFilePath.textContent = file.relativePath
   elements.editorFileMeta.textContent = `${file.language} · ${formatBytes(file.size)}`
-  elements.editorContent.textContent = file.binary
-    ? 'Aperçu indisponible : ce fichier est binaire. Utilise « Afficher dans l’Explorateur Windows » pour l’ouvrir avec une application adaptée.'
-    : file.content
+
+  if (file.binary) {
+    elements.editorContent.value = 'Aperçu indisponible : ce fichier est binaire. Utilise « Ouvrir avec VS Code » ou « Afficher dans l’Explorateur Windows ». '
+    elements.editorContent.readOnly = true
+    elements.editorReadonlyNote.textContent = 'Fichier binaire : modification désactivée dans l’éditeur intégré.'
+    elements.editorReadonlyNote.classList.remove('hidden')
+  } else {
+    elements.editorContent.value = file.content
+    elements.editorContent.readOnly = false
+    elements.editorReadonlyNote.classList.add('hidden')
+  }
+
+  setDirty(false, { conflict: false })
 }
 
 async function openFile(entry, row) {
+  if (!confirmDiscardChanges()) return
   markSelected(row, entry.relativePath)
   setStatus(`Ouverture de ${entry.relativePath}…`)
   try {
     const file = await api.workspace.readFile(entry.relativePath)
     displayFile(file, entry)
     await setMode('editor')
-    setStatus(file.binary ? 'Fichier binaire détecté' : `${file.relativePath} ouvert`)
+    if (!file.binary) queueMicrotask(() => elements.editorContent.focus())
+    setStatus(file.binary ? 'Fichier binaire détecté' : `${file.relativePath} ouvert dans l’éditeur`)
+  } catch (error) {
+    setStatus(errorMessage(error))
+  }
+}
+
+async function saveCurrentFile() {
+  if (!state.currentFile || state.currentFile.binary || !state.dirty || state.saving) return
+  state.saving = true
+  elements.saveFile.textContent = 'Enregistrement…'
+  elements.saveFile.disabled = true
+  setStatus(`Enregistrement de ${state.currentFile.relativePath}…`)
+
+  try {
+    const saved = await api.workspace.writeFile({
+      relativePath: state.currentFile.relativePath,
+      content: elements.editorContent.value,
+      expectedModifiedAt: state.currentFile.modifiedAt,
+    })
+    displayFile(saved)
+    setStatus(`${saved.relativePath} enregistré`)
+  } catch (error) {
+    const message = errorMessage(error)
+    if (/conflit|modifié sur le disque/i.test(message)) {
+      state.externalChanged = true
+      setDirty(true, { conflict: true })
+    }
+    setStatus(message)
+  } finally {
+    state.saving = false
+    elements.saveFile.textContent = 'Enregistrer'
+    elements.saveFile.disabled = !state.dirty || Boolean(state.currentFile?.binary)
+  }
+}
+
+async function openCurrentFileInVSCode() {
+  if (!state.currentFile) return
+  setStatus(`Ouverture de ${state.currentFile.relativePath} dans VS Code…`)
+  try {
+    await api.workspace.openInVSCode(state.currentFile.relativePath)
+    setStatus(`${state.currentFile.relativePath} envoyé à VS Code`)
   } catch (error) {
     setStatus(errorMessage(error))
   }
@@ -147,11 +222,21 @@ async function reloadCurrentFile(changes) {
     || state.currentFile.relativePath.startsWith(`${change.relativePath}/`),
   )
   if (!touched) return
+
+  if (state.dirty) {
+    state.externalChanged = true
+    setDirty(true, { conflict: true })
+    setStatus(`Attention : ${state.currentFile.relativePath} a changé sur le disque pendant ton édition.`)
+    return
+  }
+
   try {
     const file = await api.workspace.readFile(state.currentFile.relativePath)
     displayFile(file)
+    setStatus(`${file.relativePath} actualisé depuis le disque`)
   } catch {
     state.currentFile = undefined
+    state.dirty = false
     elements.fileTab.classList.add('hidden')
     if (state.mode === 'editor') await setMode('openfox')
   }
@@ -282,12 +367,16 @@ function scheduleTreeRefresh(delay = 280) {
 }
 
 async function chooseWorkspace() {
+  if (!confirmDiscardChanges()) return
   setStatus('Ouverture du sélecteur et synchronisation OpenFox…')
   try {
     const result = await api.workspace.choose()
     if (!result.canceled) {
       state.expandedPaths.clear()
       state.selectedPath = undefined
+      state.currentFile = undefined
+      state.dirty = false
+      elements.fileTab.classList.add('hidden')
       await refreshTree()
       setStatus(`Projet OpenFox actif : ${result.project?.name ?? result.workspace}`)
     } else {
@@ -300,6 +389,7 @@ async function chooseWorkspace() {
 
 async function openTypedWorkspace(event) {
   event?.preventDefault()
+  if (!confirmDiscardChanges()) return
   const requested = elements.workspacePath.value.trim()
   if (!requested) return
   setStatus(`Ouverture et synchronisation de ${requested}…`)
@@ -307,6 +397,9 @@ async function openTypedWorkspace(event) {
     const result = await api.workspace.openPath(requested)
     state.expandedPaths.clear()
     state.selectedPath = undefined
+    state.currentFile = undefined
+    state.dirty = false
+    elements.fileTab.classList.add('hidden')
     await refreshTree()
     setStatus(`Projet OpenFox actif : ${result.project?.name ?? requested}`)
   } catch (error) {
@@ -339,6 +432,8 @@ elements.workspacePathForm.addEventListener('submit', openTypedWorkspace)
 elements.openFoxTab.addEventListener('click', () => setMode('openfox'))
 elements.welcomeOpenOpenFox.addEventListener('click', () => setMode('openfox'))
 elements.fileTab.addEventListener('click', () => state.currentFile && setMode('editor'))
+elements.saveFile.addEventListener('click', saveCurrentFile)
+elements.openVSCode.addEventListener('click', openCurrentFileInVSCode)
 elements.revealFile.addEventListener('click', async () => {
   if (!state.currentFile) return
   try {
@@ -346,6 +441,34 @@ elements.revealFile.addEventListener('click', async () => {
   } catch (error) {
     setStatus(errorMessage(error))
   }
+})
+
+elements.editorContent.addEventListener('input', () => {
+  if (!state.currentFile || state.currentFile.binary) return
+  setDirty(elements.editorContent.value !== state.currentFile.content, { conflict: state.externalChanged })
+})
+
+elements.editorContent.addEventListener('keydown', (event) => {
+  if (event.key === 'Tab' && !elements.editorContent.readOnly) {
+    event.preventDefault()
+    const start = elements.editorContent.selectionStart
+    const end = elements.editorContent.selectionEnd
+    elements.editorContent.setRangeText('  ', start, end, 'end')
+    elements.editorContent.dispatchEvent(new Event('input'))
+  }
+})
+
+document.addEventListener('keydown', (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+    event.preventDefault()
+    void saveCurrentFile()
+  }
+})
+
+window.addEventListener('beforeunload', (event) => {
+  if (!state.dirty) return
+  event.preventDefault()
+  event.returnValue = ''
 })
 
 api.workspace.onChanged((context) => {
@@ -361,11 +484,6 @@ api.workspace.onFilesChanged((payload) => {
   scheduleTreeRefresh()
 })
 api.runtime.onStatus(updateRuntimeStatus)
-api.openFox?.onNavigated(({ url }) => {
-  if (!/\/p\/[^/]+/.test(new URL(url).pathname)) return
-  clearTimeout(state.sessionRefreshTimer)
-  state.sessionRefreshTimer = setTimeout(() => void refreshSessions(), 700)
-})
 
 Promise.all([refreshTree(), setMode('openfox')]).catch((error) => {
   setStatus(errorMessage(error))
