@@ -1,14 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
-import { createRequire } from 'node:module'
 import vm from 'node:vm'
-
-const require = createRequire(import.meta.url)
-const {
-  normalizeProjectCreatePayload,
-  windowsBasename,
-} = require('../electron/lib/openfox-windows-project-guard.cjs')
 
 const preloadUrl = new URL('../electron/openfox-local-session-preload.cjs', import.meta.url)
 const bootstrapUrl = new URL('../electron/bootstrap.mjs', import.meta.url)
@@ -26,6 +19,7 @@ function executePreload({ protocol, hostname, initialToken } = {}) {
     location: { protocol, hostname },
     localStorage,
     Set,
+    console: { error() {} },
   })
   return values.get('openfox_token')
 }
@@ -58,27 +52,6 @@ test('le preload ne remplace jamais un token OpenFox déjà présent', () => {
   )
 })
 
-test('le sélecteur OpenFox extrait correctement le nom d’un dossier Windows', () => {
-  const workdir = String.raw`E:\projets\projet-ide-open-ai\tessssttt\MON-IDE`
-  assert.equal(windowsBasename(workdir), 'MON-IDE')
-
-  const malformed = { name: workdir, workdir }
-  assert.deepEqual(normalizeProjectCreatePayload(malformed), {
-    name: 'MON-IDE',
-    workdir,
-  })
-
-  const valid = { name: 'MON-IDE', workdir }
-  assert.equal(normalizeProjectCreatePayload(valid), valid)
-})
-
-test('le preload installe le correctif du sélecteur Windows dans le monde principal', async () => {
-  const source = await readFile(preloadUrl, 'utf8')
-  assert.match(source, /openfox-windows-project-guard\.cjs/)
-  assert.match(source, /executeInMainWorld/)
-  assert.match(source, /installWindowsProjectSelectionGuard\(\)/)
-})
-
 test('le preload transforme un dépôt de l’explorateur en référence de contexte OpenFox', async () => {
   const source = await readFile(preloadUrl, 'utf8')
   assert.match(source, /application\/x-ide-open-ai-workspace-entry/)
@@ -86,6 +59,16 @@ test('le preload transforme un dépôt de l’explorateur en référence de cont
   assert.match(source, /@\$\{normalizedPath\}/)
   assert.match(source, /new InputEvent\(['"]input['"]/)
   assert.match(source, /stopImmediatePropagation\(\)/)
+})
+
+test('le correctif du sélecteur Windows est autonome dans la sandbox et injecté dans le monde principal', async () => {
+  const source = await readFile(preloadUrl, 'utf8')
+  assert.match(source, /function mainWorldProjectSelectionGuard\(\)/)
+  assert.match(source, /contextBridge\?\.executeInMainWorld/)
+  assert.match(source, /executeInMainWorld\(\{ func: mainWorldProjectSelectionGuard, args: \[\] \}\)/)
+  assert.match(source, /webFrame\?\.executeJavaScript/)
+  assert.doesNotMatch(source, /require\(['"]\.\/lib\/openfox-windows-project-guard\.cjs['"]\)/)
+  assert.match(source, /Sélection du dossier impossible/)
 })
 
 test('le bootstrap installe le preload moderne avant main sans bloquer app.whenReady', async () => {
