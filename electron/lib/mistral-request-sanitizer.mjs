@@ -4,6 +4,12 @@ const INTERNAL_ASSISTANT_FIELDS = Object.freeze([
   'thinking',
 ])
 
+// OpenFox uses this backend-specific option for local engines such as vLLM.
+// Mistral's hosted /chat/completions schema is strict and rejects it with 422.
+const UNSUPPORTED_MISTRAL_ROOT_FIELDS = Object.freeze([
+  'chat_template_kwargs',
+])
+
 const MISTRAL_MODEL_PATTERN = /(?:^|[\/:._-])(mistral|devstral|codestral|ministral|pixtral)(?:$|[\/:._-])/i
 
 function requestTargetsMistral(url, payload) {
@@ -23,6 +29,15 @@ export function sanitizeMistralChatPayload(payload, { url = '' } = {}) {
   if (!requestTargetsMistral(url, payload)) return payload
 
   let changed = false
+  const cleanPayload = { ...payload }
+
+  for (const field of UNSUPPORTED_MISTRAL_ROOT_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(cleanPayload, field)) {
+      delete cleanPayload[field]
+      changed = true
+    }
+  }
+
   const messages = payload.messages.map((message) => {
     if (!message || typeof message !== 'object' || Array.isArray(message) || message.role !== 'assistant') {
       return message
@@ -38,7 +53,9 @@ export function sanitizeMistralChatPayload(payload, { url = '' } = {}) {
     return clean
   })
 
-  return changed ? { ...payload, messages } : payload
+  if (!changed) return payload
+  cleanPayload.messages = messages
+  return cleanPayload
 }
 
 export function createMistralFetchGuard(nativeFetch) {
