@@ -21,8 +21,9 @@
 
 * { box-sizing: border-box; }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--bg); color: var(--text); }
-button, input { font: inherit; }
+button, input, textarea { font: inherit; }
 button { color: inherit; }
+button:disabled { cursor: not-allowed; opacity: .5; filter: none !important; }
 
 .ide-shell {
   display: grid;
@@ -100,14 +101,20 @@ button { color: inherit; }
 .runtime-state.ready { color: var(--success); }
 .runtime-state.error { color: var(--danger); }
 
-.editor-panel { position: absolute; inset: var(--topbar-height) 0 0; display: flex; flex-direction: column; background: #0b0e13; }
+.editor-panel { position: absolute; inset: var(--topbar-height) 0 0; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #0b0e13; }
 .editor-toolbar { min-height: 52px; padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--panel); display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .editor-file-name { font-size: 13px; font-weight: 650; }
 .editor-file-path { margin-top: 3px; color: var(--muted); font: 11px/1.3 "Cascadia Code", Consolas, monospace; }
-.editor-actions { display: flex; align-items: center; gap: 10px; }
+.editor-actions { display: flex; align-items: center; gap: 8px; }
 .editor-file-meta { color: var(--muted); font-size: 11px; }
+.editor-dirty { border: 1px solid rgba(245, 185, 66, .45); border-radius: 999px; padding: 2px 7px; color: var(--warning); background: rgba(245, 185, 66, .08); font-size: 10px; font-weight: 700; }
+.editor-dirty.conflict { border-color: rgba(255, 107, 107, .55); color: var(--danger); background: rgba(255, 107, 107, .08); }
 .editor-actions button { background: var(--panel-3); border-color: var(--border); font-size: 11px; }
-.editor-surface { flex: 1; margin: 0; padding: 18px 22px 60px; overflow: auto; color: #d9e2ef; background: #0b0e13; tab-size: 2; white-space: pre; font: 13px/1.55 "Cascadia Code", "JetBrains Mono", Consolas, monospace; }
+.editor-actions .primary-action { background: var(--accent-strong); border-color: var(--accent-strong); }
+.editor-surface { flex: 1; min-width: 0; min-height: 0; width: 100%; margin: 0; padding: 18px 22px 60px; resize: none; overflow: auto; border: 0; outline: none; color: #d9e2ef; caret-color: #fff; background: #0b0e13; tab-size: 2; white-space: pre; font: 13px/1.55 "Cascadia Code", "JetBrains Mono", Consolas, monospace; }
+.editor-surface:focus { box-shadow: inset 0 0 0 1px rgba(76, 159, 254, .35); }
+.editor-surface:read-only { color: var(--muted); cursor: default; }
+.editor-readonly-note { padding: 7px 14px; border-top: 1px solid var(--border); background: rgba(245, 185, 66, .08); color: var(--warning); font-size: 11px; }
 
 .welcome-panel { position: absolute; inset: var(--topbar-height) 0 0; display: grid; place-items: center; background: radial-gradient(circle at 50% 32%, #172337 0%, #0b0e13 45%, #090b0f 100%); }
 .welcome-card { width: min(520px, calc(100% - 48px)); text-align: center; padding: 36px; }
@@ -126,6 +133,6 @@ button { color: inherit; }
   .sync-dot { animation: none !important; }
 }
 
-@media (max-width: 1050px) {
-  .editor-actions button { display: none; }
+@media (max-width: 1120px) {
+  .editor-actions .secondary-action { display: none; }
 }
