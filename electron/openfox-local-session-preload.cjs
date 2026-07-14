@@ -8,18 +8,107 @@ function isLoopbackOpenFoxPage() {
   return location.protocol === 'http:' && loopbackHosts.has(location.hostname)
 }
 
+function mainWorldProjectSelectionGuard() {
+  if (window.__ideAiWindowsProjectGuardInstalled || typeof window.fetch !== 'function') return false
+
+  const nativeFetch = window.fetch.bind(window)
+
+  const showProjectError = (message) => {
+    const previous = document.getElementById('ide-ai-project-selection-error')
+    previous?.remove()
+
+    const notice = document.createElement('div')
+    notice.id = 'ide-ai-project-selection-error'
+    notice.setAttribute('role', 'alert')
+    notice.textContent = message || 'Impossible de sélectionner ce dossier.'
+    Object.assign(notice.style, {
+      position: 'fixed',
+      right: '20px',
+      bottom: '20px',
+      zIndex: '2147483647',
+      maxWidth: '520px',
+      padding: '12px 16px',
+      border: '1px solid #ef4444',
+      borderRadius: '8px',
+      background: '#2a1114',
+      color: '#fecaca',
+      fontFamily: 'system-ui, sans-serif',
+      fontSize: '14px',
+      boxShadow: '0 12px 30px rgba(0,0,0,.45)',
+      whiteSpace: 'pre-wrap',
+    })
+    document.body.appendChild(notice)
+    window.setTimeout(() => notice.remove(), 10_000)
+  }
+
+  window.fetch = async function ideAiProjectCompatibleFetch(input, init) {
+    let parsedUrl
+    try {
+      const rawUrl = typeof input === 'string' ? input : input?.url
+      parsedUrl = new URL(rawUrl, window.location.origin)
+    } catch {
+      return nativeFetch(input, init)
+    }
+
+    const method = String(init?.method ?? input?.method ?? 'GET').toUpperCase()
+    if (method !== 'POST' || parsedUrl.pathname !== '/api/projects' || typeof init?.body !== 'string') {
+      return nativeFetch(input, init)
+    }
+
+    let requestInit = init
+    try {
+      const original = JSON.parse(init.body)
+      if (original && typeof original === 'object' && !Array.isArray(original) && typeof original.workdir === 'string') {
+        const workdir = original.workdir.trim()
+        const currentName = typeof original.name === 'string' ? original.name.trim() : ''
+        const cleanPath = workdir.replace(/[\\/]+$/, '')
+        const parts = cleanPath.split(/[\\/]+/).filter(Boolean)
+        const basename = parts.at(-1) ?? cleanPath
+        const pathLikeName = !currentName
+          || currentName === workdir
+          || /[\\/]/.test(currentName)
+          || /^[A-Za-z]:/.test(currentName)
+
+        if (basename && pathLikeName && currentName !== basename) {
+          requestInit = { ...init, body: JSON.stringify({ ...original, name: basename }) }
+        }
+      }
+    } catch {
+      // Preserve OpenFox's original request when its body is not valid JSON.
+    }
+
+    const response = await nativeFetch(input, requestInit)
+    if (!response.ok) {
+      void response.clone().json()
+        .catch(() => ({}))
+        .then((body) => {
+          const detail = body?.error?.message ?? body?.error ?? body?.message
+          showProjectError(detail ? `Sélection du dossier impossible : ${detail}` : `Sélection du dossier impossible (HTTP ${response.status}).`)
+        })
+    }
+    return response
+  }
+
+  Object.defineProperty(window, '__ideAiWindowsProjectGuardInstalled', {
+    value: true,
+    configurable: false,
+    enumerable: false,
+    writable: false,
+  })
+  return true
+}
+
 function installWindowsProjectSelectionGuard() {
   try {
     const { contextBridge, webFrame } = require('electron')
-    const { installOpenFoxWindowsProjectGuard } = require('./lib/openfox-windows-project-guard.cjs')
 
     if (typeof contextBridge?.executeInMainWorld === 'function') {
-      contextBridge.executeInMainWorld({ func: installOpenFoxWindowsProjectGuard })
+      contextBridge.executeInMainWorld({ func: mainWorldProjectSelectionGuard, args: [] })
       return true
     }
 
     if (typeof webFrame?.executeJavaScript === 'function') {
-      void webFrame.executeJavaScript(`(${installOpenFoxWindowsProjectGuard.toString()})()`, true)
+      void webFrame.executeJavaScript(`(${mainWorldProjectSelectionGuard.toString()})()`, true)
       return true
     }
   } catch (error) {
