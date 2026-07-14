@@ -62,9 +62,10 @@ export async function ensureOpenFoxBootstrap(paths, { port, workspace }) {
   }
   await writeJsonAtomic(paths.configPath, merged)
 
-  if (!(await exists(paths.authPath))) {
-    await writeJsonAtomic(paths.authPath, { strategy: 'local', encryptedPassword: null })
-  }
+  // The desktop wrapper owns an isolated loopback-only OpenFox profile.
+  // Always reset its auth mode to local so a stale network/password profile
+  // cannot leak into the IDE runtime and block startup with a password dialog.
+  await writeJsonAtomic(paths.authPath, { strategy: 'local', encryptedPassword: null })
 
   if (!(await exists(paths.canonicalMcpPath))) {
     await writeJsonAtomic(paths.canonicalMcpPath, {
@@ -256,6 +257,6 @@ export async function updateCanonicalDisabledTools(paths, serverName, disabledTo
   const canonical = await loadCanonicalMcp(paths)
   const server = canonical.mcpServers[serverName]
   if (!server) return canonical
-  server.disabledTools = [...new Set(disabledTools)]
+  server.disabledTools = [...new Set(stringArray(disabledTools, `${serverName}.disabledTools`))]
   return saveCanonicalMcp(paths, canonical)
 }
