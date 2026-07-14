@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { spawn, spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { access, appendFile, mkdir } from 'node:fs/promises'
 import { ensureOpenFoxBootstrap, syncCanonicalMcpToOpenFox } from './config-store.mjs'
@@ -62,6 +62,9 @@ export class OpenFoxRuntime extends EventEmitter {
 
     const cliPath = await locateOpenFoxCli()
     const nodeBinary = resolveNodeBinary()
+    const compatibilityGuard = pathToFileURL(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'openfox-mistral-fetch-guard.mjs'),
+    ).href
     const env = {
       ...process.env,
       ...this.paths.env,
@@ -70,12 +73,16 @@ export class OpenFoxRuntime extends EventEmitter {
     }
 
     await mkdir(path.dirname(this.paths.logPath), { recursive: true })
-    this.child = spawn(nodeBinary, [cliPath, '--port', String(this.port), '--no-browser'], {
-      cwd: this.workspace,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    })
+    this.child = spawn(
+      nodeBinary,
+      [`--import=${compatibilityGuard}`, cliPath, '--port', String(this.port), '--no-browser'],
+      {
+        cwd: this.workspace,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      },
+    )
 
     this.child.stdout?.on('data', (chunk) => this.record('stdout', chunk.toString()))
     this.child.stderr?.on('data', (chunk) => this.record('stderr', chunk.toString()))
