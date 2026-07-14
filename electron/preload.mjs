@@ -1,5 +1,11 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
+function subscribe(channel, listener) {
+  const handler = (_event, payload) => listener(payload)
+  ipcRenderer.on(channel, handler)
+  return () => ipcRenderer.removeListener(channel, handler)
+}
+
 contextBridge.exposeInMainWorld('desktopAPI', {
   mcp: {
     list: () => ipcRenderer.invoke('mcp:list'),
@@ -28,11 +34,19 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     openDocument: (documentId) => ipcRenderer.invoke('rag:open-document', documentId),
     revealOutput: () => ipcRenderer.invoke('rag:reveal-output'),
     pathForFile: (file) => webUtils.getPathForFile(file),
-    onProgress: (listener) => {
-      const handler = (_event, payload) => listener(payload)
-      ipcRenderer.on('rag:progress', handler)
-      return () => ipcRenderer.removeListener('rag:progress', handler)
-    },
+    onProgress: (listener) => subscribe('rag:progress', listener),
+  },
+  workspace: {
+    current: () => ipcRenderer.invoke('workspace:current'),
+    choose: () => ipcRenderer.invoke('workspace:choose'),
+    openPath: (workspacePath) => ipcRenderer.invoke('workspace:open-path', workspacePath),
+    list: (relativePath = '') => ipcRenderer.invoke('workspace:list', relativePath),
+    readFile: (relativePath) => ipcRenderer.invoke('workspace:read-file', relativePath),
+    reveal: (relativePath) => ipcRenderer.invoke('workspace:reveal', relativePath),
+    onChanged: (listener) => subscribe('workspace:changed', listener),
+  },
+  layout: {
+    setMode: (mode) => ipcRenderer.invoke('layout:set-mode', mode),
   },
   aiOs: {
     status: () => ipcRenderer.invoke('ai-os:status'),
@@ -41,6 +55,7 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     logs: () => ipcRenderer.invoke('runtime:logs'),
     restart: () => ipcRenderer.invoke('runtime:restart'),
     chooseWorkspace: () => ipcRenderer.invoke('workspace:choose'),
+    onStatus: (listener) => subscribe('runtime:status', listener),
   },
   app: {
     info: () => ipcRenderer.invoke('app:info'),
