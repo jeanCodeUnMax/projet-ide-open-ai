@@ -3,12 +3,14 @@ import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-function launchDetached(executable, args) {
+function launchDetached(executable, args, { platform = process.platform } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, {
       detached: true,
       stdio: 'ignore',
-      windowsHide: true,
+      // Hiding a GUI process on Windows can leave Code.exe running without a
+      // visible foreground window. Other platforms do not need a Windows flag.
+      windowsHide: platform !== 'win32',
     })
     child.once('error', reject)
     child.once('spawn', () => {
@@ -36,6 +38,14 @@ function vscodeExecutables(platform, env) {
   return candidates
 }
 
+function vscodeArguments(targetPath, platform) {
+  // --new-window avoids a silent hand-off to an existing background/minimized
+  // VS Code process and gives Windows a real foreground window to display.
+  return platform === 'win32'
+    ? ['--new-window', '--goto', targetPath]
+    : ['--goto', targetPath]
+}
+
 export async function openInVSCode(targetPath, {
   platform = process.platform,
   env = process.env,
@@ -49,7 +59,7 @@ export async function openInVSCode(targetPath, {
   for (const executable of vscodeExecutables(platform, env)) {
     try {
       await access(executable)
-      await launch(executable, ['--goto', targetPath])
+      await launch(executable, vscodeArguments(targetPath, platform), { platform })
       return { opened: true, method: 'executable', executable, path: targetPath }
     } catch {
       // Essayer le prochain emplacement connu.
