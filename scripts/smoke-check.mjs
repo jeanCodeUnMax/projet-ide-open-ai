@@ -2,8 +2,10 @@ import { access, readFile } from 'node:fs/promises'
 import { validateAgentCard } from '../electron/lib/a2a-protocol.mjs'
 
 const required = [
+  'electron/bootstrap.mjs',
   'electron/main.mjs',
   'electron/preload.mjs',
+  'electron/openfox-local-session-preload.cjs',
   'electron/lib/config-store.mjs',
   'electron/lib/openfox-runtime.mjs',
   'electron/lib/openfox-session-client.mjs',
@@ -34,6 +36,14 @@ const required = [
 ]
 
 for (const file of required) await access(new URL(`../${file}`, import.meta.url))
+
+const packageDocument = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+if (packageDocument.main !== 'electron/bootstrap.mjs') {
+  throw new Error('Le point d’entrée Electron doit utiliser electron/bootstrap.mjs.')
+}
+if (packageDocument.build?.extraMetadata?.main !== 'electron/bootstrap.mjs') {
+  throw new Error('Le paquet distribué doit utiliser electron/bootstrap.mjs.')
+}
 
 JSON.parse(await readFile(new URL('../config/app-schema.json', import.meta.url), 'utf8'))
 validateAgentCard(JSON.parse(await readFile(new URL('../config/agents/orchestrator.agent-card.json', import.meta.url), 'utf8')))
