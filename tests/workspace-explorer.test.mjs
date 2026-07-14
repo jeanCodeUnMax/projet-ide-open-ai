@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { WorkspaceExplorer, resolveWorkspaceDirectory } from '../electron/lib/workspace-explorer.mjs'
@@ -33,6 +33,37 @@ test('WorkspaceExplorer lit un fichier texte avec ses métadonnées', async () =
   assert.match(file.content, /Contenu/)
 })
 
+test('WorkspaceExplorer enregistre un fichier texte dans le workspace', async () => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'ide-workspace-write-'))
+  const target = path.join(workspace, 'README.md')
+  await writeFile(target, '# Avant\n', 'utf8')
+
+  const explorer = new WorkspaceExplorer({ workspace })
+  const before = await explorer.read('README.md')
+  const saved = await explorer.write('README.md', '# Après\n', { expectedModifiedAt: before.modifiedAt })
+
+  assert.equal(saved.content, '# Après\n')
+  assert.equal(await readFile(target, 'utf8'), '# Après\n')
+})
+
+test('WorkspaceExplorer refuse d’écraser une modification externe', async () => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'ide-workspace-conflict-'))
+  const target = path.join(workspace, 'README.md')
+  await writeFile(target, '# Initial\n', 'utf8')
+
+  const explorer = new WorkspaceExplorer({ workspace })
+  const opened = await explorer.read('README.md')
+  await writeFile(target, '# OpenFox\n', 'utf8')
+  const future = new Date(Date.now() + 5_000)
+  await utimes(target, future, future)
+
+  await assert.rejects(
+    () => explorer.write('README.md', '# Utilisateur\n', { expectedModifiedAt: opened.modifiedAt }),
+    /conflit de sauvegarde/i,
+  )
+  assert.equal(await readFile(target, 'utf8'), '# OpenFox\n')
+})
+
 test('WorkspaceExplorer refuse une sortie du workspace', async () => {
   const parent = await mkdtemp(path.join(os.tmpdir(), 'ide-workspace-safe-'))
   const workspace = path.join(parent, 'workspace')
@@ -41,9 +72,10 @@ test('WorkspaceExplorer refuse une sortie du workspace', async () => {
 
   const explorer = new WorkspaceExplorer({ workspace })
   await assert.rejects(() => explorer.read('../secret.txt'), /hors du workspace/i)
+  await assert.rejects(() => explorer.write('../secret.txt', 'écrasement'), /hors du workspace/i)
 })
 
-test('WorkspaceExplorer refuse les fichiers binaires et trop volumineux dans l’aperçu', async () => {
+test('WorkspaceExplorer refuse les fichiers binaires et trop volumineux dans l’aperçu et l’éditeur', async () => {
   const workspace = await mkdtemp(path.join(os.tmpdir(), 'ide-workspace-limit-'))
   await writeFile(path.join(workspace, 'binary.bin'), Buffer.from([1, 0, 2, 3]))
   await writeFile(path.join(workspace, 'large.txt'), '123456', 'utf8')
@@ -52,7 +84,9 @@ test('WorkspaceExplorer refuse les fichiers binaires et trop volumineux dans l�
   const binaryExplorer = new WorkspaceExplorer({ workspace })
   const binary = await binaryExplorer.read('binary.bin')
   assert.equal(binary.binary, true)
+  await assert.rejects(() => binaryExplorer.write('binary.bin', 'texte'), /binaires/i)
   await assert.rejects(() => explorer.read('large.txt'), /trop volumineux/i)
+  await assert.rejects(() => explorer.write('large.txt', '123456'), /trop volumineux/i)
 })
 
 test('resolveWorkspaceDirectory valide un dossier réel', async () => {
