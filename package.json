@@ -1,9 +1,9 @@
 {
   "name": "projet-ide-open-ai",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "IDE agentique Electron synchronisé avec les projets et sessions OpenFox, avec explorateur de workspace, MCP, A2A, Hephaistos et RAG multimodal.",
   "type": "module",
-  "main": "electron/main.mjs",
+  "main": "electron/bootstrap.mjs",
   "author": "Jean Sébastien <webmanhtc@gmail.com>",
   "license": "MIT",
   "private": true,
@@ -45,7 +45,7 @@
       "NOTICE"
     ],
     "extraMetadata": {
-      "main": "electron/main.mjs"
+      "main": "electron/bootstrap.mjs"
     },
     "win": {
       "target": "nsis"
