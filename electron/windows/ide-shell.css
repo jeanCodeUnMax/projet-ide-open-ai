@@ -56,11 +56,12 @@ button:disabled { cursor: not-allowed; opacity: .5; filter: none !important; }
   border-bottom: 1px solid var(--border);
 }
 .eyebrow { font-size: 10px; letter-spacing: .14em; color: var(--muted); font-weight: 700; }
-.workspace-name { margin-top: 4px; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 650; }
-.header-actions { display: flex; gap: 4px; }
+.workspace-name { margin-top: 4px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 650; }
+.header-actions { display: flex; gap: 3px; }
 .icon-button { width: 30px; height: 30px; border: 1px solid transparent; border-radius: 5px; background: transparent; cursor: pointer; }
 .icon-button.compact { width: 26px; height: 26px; flex: 0 0 26px; }
 .icon-button:hover, .icon-button:focus-visible { background: var(--panel-3); border-color: var(--border); outline: none; }
+.icon-button.danger:not(:disabled):hover, .icon-button.danger:not(:disabled):focus-visible { color: #ffd1d1; background: rgba(255, 107, 107, .14); border-color: rgba(255, 107, 107, .45); }
 
 .path-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); }
 .path-form input { min-width: 0; height: 30px; border: 1px solid var(--border); background: #0b0e13; color: var(--text); border-radius: 4px; padding: 0 8px; font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font-size: 11px; }
@@ -99,6 +100,12 @@ button:disabled { cursor: not-allowed; opacity: .5; filter: none !important; }
 .workspace-drop-overlay .drop-overlay-icon { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 50%; background: rgba(76, 159, 254, .14); color: var(--accent); font-size: 30px; }
 .workspace-drop-overlay strong { font-size: 14px; }
 .workspace-drop-overlay span { max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
+.tree-context-menu { position: fixed; z-index: 1000; min-width: 230px; padding: 5px; border: 1px solid var(--border); border-radius: 7px; background: #171c24; box-shadow: 0 14px 36px rgba(0, 0, 0, .5); }
+.tree-context-menu button { width: 100%; min-height: 32px; padding: 6px 9px; border: 0; border-radius: 4px; background: transparent; display: flex; align-items: center; justify-content: space-between; gap: 18px; color: var(--text); text-align: left; cursor: pointer; }
+.tree-context-menu button:hover, .tree-context-menu button:focus-visible { background: #26364b; outline: none; }
+.tree-context-menu button.danger { color: #ffb0b0; }
+.tree-context-menu button.danger:hover, .tree-context-menu button.danger:focus-visible { background: rgba(255, 107, 107, .14); }
+.tree-context-menu kbd { color: var(--muted); font: 10px/1 "Cascadia Code", Consolas, monospace; }
 
 .workbench { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; position: relative; background: var(--bg); }
 .workbench-tabs { height: var(--topbar-height); display: flex; align-items: stretch; background: var(--panel); border-bottom: 1px solid var(--border); }
