@@ -16,6 +16,8 @@
           <div id="workspace-name" class="workspace-name">Workspace</div>
         </div>
         <div class="header-actions">
+          <button id="rename-entry" class="icon-button" type="button" title="Renommer l’élément sélectionné (F2)" disabled>✎</button>
+          <button id="delete-entry" class="icon-button danger" type="button" title="Envoyer l’élément sélectionné dans la Corbeille (Suppr)" disabled>🗑</button>
           <button id="choose-workspace" class="icon-button" type="button" title="Ouvrir un dossier sur C:, D:, E: ou un autre disque">📂</button>
           <button id="refresh-tree" class="icon-button" type="button" title="Actualiser l’arborescence">↻</button>
         </div>
@@ -43,6 +45,11 @@
         <div class="drop-overlay-icon">⇩</div>
         <strong id="workspace-drop-title">Déposer dans le workspace</strong>
         <span id="workspace-drop-target">Racine du projet</span>
+      </div>
+      <div id="tree-context-menu" class="tree-context-menu hidden" role="menu" aria-label="Actions sur le fichier ou dossier">
+        <button type="button" data-action="rename" role="menuitem"><span>Renommer</span><kbd>F2</kbd></button>
+        <button type="button" data-action="reveal" role="menuitem"><span>Afficher dans l’Explorateur Windows</span></button>
+        <button type="button" data-action="delete" class="danger" role="menuitem"><span>Envoyer à la Corbeille</span><kbd>Suppr</kbd></button>
       </div>
     </aside>
 
