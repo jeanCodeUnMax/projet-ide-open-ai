@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     openPath: (workspacePath) => ipcRenderer.invoke('workspace:open-path', workspacePath),
     list: (relativePath = '') => ipcRenderer.invoke('workspace:list', relativePath),
     readFile: (relativePath) => ipcRenderer.invoke('workspace:read-file', relativePath),
+    writeFile: (payload) => ipcRenderer.invoke('editor:save-file', payload),
+    openInVSCode: (relativePath) => ipcRenderer.invoke('editor:open-vscode', relativePath),
     reveal: (relativePath) => ipcRenderer.invoke('workspace:reveal', relativePath),
     onChanged: (listener) => subscribe('workspace:changed', listener),
     onSyncStatus: (listener) => subscribe('workspace:sync-status', listener),
