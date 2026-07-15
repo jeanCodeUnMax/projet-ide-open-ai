@@ -12,6 +12,7 @@ const required = [
   'electron/lib/editor-ipc.mjs',
   'electron/lib/security-audit-ipc.mjs',
   'electron/lib/workspace-security-auditor.mjs',
+  'electron/lib/workspace-security-policy.mjs',
   'electron/lib/external-editor.mjs',
   'electron/lib/mistral-request-sanitizer.cjs',
   'electron/lib/openfox-hidden-files-guard.cjs',
