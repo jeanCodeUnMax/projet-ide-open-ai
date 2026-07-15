@@ -5,7 +5,7 @@ import process from 'node:process'
 import {
   auditWorkspaceSecurity,
   formatSecurityAuditSummary,
-} from '../electron/lib/workspace-security-auditor.mjs'
+} from '../electron/lib/workspace-security-policy.mjs'
 
 function parseArguments(argv) {
   const options = { json: false, strict: false, workspace: undefined }
