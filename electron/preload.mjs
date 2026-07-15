@@ -56,6 +56,10 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     onSyncStatus: (listener) => subscribe('workspace:sync-status', listener),
     onFilesChanged: (listener) => subscribe('workspace:files-changed', listener),
   },
+  security: {
+    auditWorkspace: (payload = {}) => ipcRenderer.invoke('security:audit-workspace', payload),
+    latest: () => ipcRenderer.invoke('security:latest'),
+  },
   // OpenFox navigation must not trigger a session refresh that reloads the same
   // WebContentsView. The previous feedback loop caused a reload every 700 ms and
   // made the frontend alternate continuously between connected/reconnecting.
