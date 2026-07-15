@@ -20,11 +20,7 @@ async function probe(url: string): Promise<ServiceHealth & { payload?: unknown }
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(2_000) });
     if (!response.ok) {
-      return {
-        state: 'degraded',
-        message: `HTTP ${response.status}`,
-        checkedAt: now(),
-      };
+      return { state: 'degraded', message: `HTTP ${response.status}`, checkedAt: now() };
     }
     let payload: unknown;
     try {
@@ -32,12 +28,7 @@ async function probe(url: string): Promise<ServiceHealth & { payload?: unknown }
     } catch {
       payload = undefined;
     }
-    return {
-      state: 'ready',
-      message: 'Service disponible',
-      checkedAt: now(),
-      payload,
-    };
+    return { state: 'ready', message: 'Service disponible', checkedAt: now(), payload };
   } catch (error) {
     return {
       state: 'offline',
@@ -50,7 +41,7 @@ async function probe(url: string): Promise<ServiceHealth & { payload?: unknown }
 @injectable()
 export class IdeContextServiceImpl implements IdeContextService {
   @inject(WorkspaceServer)
-  protected readonly workspaceServer: WorkspaceServer;
+  protected readonly workspaceServer!: WorkspaceServer;
 
   async snapshot(): Promise<IdeContextSnapshot> {
     const uri = await this.workspaceServer.getMostRecentlyUsedWorkspace();
@@ -60,17 +51,7 @@ export class IdeContextServiceImpl implements IdeContextService {
       workspace: { uri, name },
       editors: [],
       diagnostics: { errors: 0, warnings: 0 },
-      capabilities: [
-        'workspace',
-        'filesystem',
-        'editor',
-        'terminal',
-        'tasks',
-        'scm',
-        'debug',
-        'mini-browser',
-        'mcp',
-      ],
+      capabilities: ['workspace', 'filesystem', 'editor', 'terminal', 'tasks', 'scm', 'debug', 'mini-browser', 'mcp'],
       generatedAt: now(),
     };
   }
@@ -82,13 +63,7 @@ export class OpenFoxBridgeServiceImpl implements OpenFoxBridgeService {
     const baseUrl = (process.env.IDE_AI_OPENFOX_URL || 'http://127.0.0.1:10369').replace(/\/$/, '');
     const health = await probe(`${baseUrl}/api/health`);
     const payload = health.payload as { version?: string } | undefined;
-    return {
-      state: health.state,
-      message: health.message,
-      checkedAt: health.checkedAt,
-      baseUrl,
-      version: payload?.version,
-    };
+    return { state: health.state, message: health.message, checkedAt: health.checkedAt, baseUrl, version: payload?.version };
   }
 }
 
@@ -96,18 +71,8 @@ export class OpenFoxBridgeServiceImpl implements OpenFoxBridgeService {
 export class SecurityBridgeServiceImpl implements SecurityBridgeService {
   async status(): Promise<SecurityStatus> {
     const requested = String(process.env.IDE_AI_SECURITY_MODE || 'protected').toLowerCase();
-    const mode: SecurityStatus['mode'] = requested === 'strict'
-      ? 'strict'
-      : requested === 'warn'
-        ? 'warn'
-        : 'protected';
-    return {
-      state: 'ready',
-      message: `Politique ${mode}`,
-      checkedAt: now(),
-      mode,
-      gateEnabled: mode !== 'warn',
-    };
+    const mode: SecurityStatus['mode'] = requested === 'strict' ? 'strict' : requested === 'warn' ? 'warn' : 'protected';
+    return { state: 'ready', message: `Politique ${mode}`, checkedAt: now(), mode, gateEnabled: mode !== 'warn' };
   }
 }
 
