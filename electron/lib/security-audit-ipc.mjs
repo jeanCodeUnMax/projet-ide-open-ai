@@ -2,7 +2,7 @@ import { app, ipcMain } from 'electron'
 import { createRuntimePaths } from './runtime-paths.mjs'
 import { loadDesktopSettings } from './config-store.mjs'
 import { resolveWorkspaceDirectory } from './workspace-explorer.mjs'
-import { auditWorkspaceSecurity } from './workspace-security-auditor.mjs'
+import { auditWorkspaceSecurity } from './workspace-security-policy.mjs'
 
 let registered = false
 let latestReport
