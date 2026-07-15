@@ -105,7 +105,10 @@ function summarize(findings, originalSummary, mode) {
 }
 
 export async function auditWorkspaceSecurity(workspace, options = {}) {
-  const report = await runRawAudit(workspace, { ...options, mode: options.mode ?? 'warn' })
+  const mode = options.mode === 'strict' || (!options.mode && process.env.OPENAI_IDE_SECURITY_MODE === 'strict')
+    ? 'strict'
+    : 'warn'
+  const report = await runRawAudit(workspace, { ...options, mode })
   const findings = []
 
   for (const finding of report.findings) {
@@ -127,7 +130,6 @@ export async function auditWorkspaceSecurity(workspace, options = {}) {
     return severity || a.file.localeCompare(b.file) || (a.line ?? 0) - (b.line ?? 0)
   })
 
-  const mode = options.mode === 'strict' ? 'strict' : 'warn'
   const summary = summarize(findings, report.summary, mode)
   return {
     ...report,
