@@ -1,0 +1,84 @@
+{
+  "private": true,
+  "name": "ide-ai-theia-electron",
+  "productName": "IDE-AI Theia",
+  "version": "0.1.0",
+  "main": "lib/backend/electron-main.js",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "theia": {
+    "target": "electron",
+    "frontend": {
+      "config": {
+        "applicationName": "IDE-AI",
+        "reloadOnReconnect": true,
+        "preferences": {
+          "toolbar.showToolbar": true
+        },
+        "electron": {
+          "showWindowEarly": false
+        }
+      }
+    },
+    "backend": {
+      "config": {
+        "frontendConnectionTimeout": -1,
+        "startupTimeout": -1,
+        "configurationFolder": ".ide-ai"
+      }
+    }
+  },
+  "dependencies": {
+    "@ide-ai/theia-core": "0.1.0",
+    "@theia/ai-chat": "1.73.1",
+    "@theia/ai-chat-ui": "1.73.1",
+    "@theia/ai-core": "1.73.1",
+    "@theia/ai-core-ui": "1.73.1",
+    "@theia/ai-mcp": "1.73.1",
+    "@theia/ai-mcp-ui": "1.73.1",
+    "@theia/ai-terminal": "1.73.1",
+    "@theia/core": "1.73.1",
+    "@theia/debug": "1.73.1",
+    "@theia/editor": "1.73.1",
+    "@theia/electron": "1.73.1",
+    "@theia/file-search": "1.73.1",
+    "@theia/filesystem": "1.73.1",
+    "@theia/getting-started": "1.73.1",
+    "@theia/markers": "1.73.1",
+    "@theia/messages": "1.73.1",
+    "@theia/mini-browser": "1.73.1",
+    "@theia/monaco": "1.73.1",
+    "@theia/navigator": "1.73.1",
+    "@theia/outline-view": "1.73.1",
+    "@theia/output": "1.73.1",
+    "@theia/plugin-ext": "1.73.1",
+    "@theia/plugin-ext-vscode": "1.73.1",
+    "@theia/preferences": "1.73.1",
+    "@theia/process": "1.73.1",
+    "@theia/scm": "1.73.1",
+    "@theia/search-in-workspace": "1.73.1",
+    "@theia/task": "1.73.1",
+    "@theia/terminal": "1.73.1",
+    "@theia/terminal-manager": "1.73.1",
+    "@theia/toolbar": "1.73.1",
+    "@theia/userstorage": "1.73.1",
+    "@theia/variable-resolver": "1.73.1",
+    "@theia/vsx-registry": "1.73.1",
+    "@theia/workspace": "1.73.1"
+  },
+  "devDependencies": {
+    "@theia/cli": "1.73.1",
+    "electron": "39.8.7"
+  },
+  "scripts": {
+    "build": "yarn rebuild && theia build --app-target=electron --mode development",
+    "build:prod": "yarn rebuild && theia build --app-target=electron",
+    "clean": "theia clean",
+    "compile": "theia build --app-target=electron --mode development",
+    "rebuild": "theia rebuild:electron --cacheRoot ../..",
+    "start": "theia start --plugins=local-dir:../../plugins",
+    "start:debug": "yarn start --log-level=debug --remote-debugging-port=9222"
+  }
+}
