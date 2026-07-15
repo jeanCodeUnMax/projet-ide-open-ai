@@ -29,14 +29,18 @@
         <button type="submit" title="Ouvrir ce chemin">Ouvrir</button>
       </form>
 
-      <section class="sync-card" aria-label="Synchronisation OpenFox">
+      <section class="sync-card" aria-label="Synchronisation OpenFox et sécurité">
         <span id="workspace-sync-dot" class="sync-dot starting" aria-hidden="true"></span>
         <div class="sync-details">
           <div id="workspace-sync-label" class="sync-label">Synchronisation OpenFox…</div>
           <div id="openfox-project" class="sync-meta">Projet : en attente</div>
           <div id="openfox-session" class="sync-meta">Session : en attente</div>
+          <div id="workspace-security" class="sync-meta" role="status">Sécurité : audit en attente</div>
         </div>
-        <button id="refresh-sessions" class="icon-button compact" type="button" title="Actualiser les sessions OpenFox">↻</button>
+        <div class="sync-actions">
+          <button id="audit-security" class="icon-button compact" type="button" title="Auditer localement les secrets, MCP, réglages agentiques et instructions cachées">🛡</button>
+          <button id="refresh-sessions" class="icon-button compact" type="button" title="Actualiser les sessions OpenFox">↻</button>
+        </div>
       </section>
 
       <div id="tree-status" class="tree-status" role="status">Chargement du workspace…</div>
@@ -107,5 +111,6 @@
   <script src="./ide-shell.js"></script>
   <script src="./ide-shell-dnd.js"></script>
   <script src="./ide-shell-file-ops.js"></script>
+  <script src="./ide-shell-security.js"></script>
 </body>
 </html>
