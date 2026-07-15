@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "ide-ai-theia-electron",
-  "productName": "IDE-AI Theia",
+  "productName": "IDE-AI",
   "version": "0.1.0",
   "main": "lib/backend/electron-main.js",
   "license": "MIT",
@@ -74,14 +74,17 @@
   },
   "devDependencies": {
     "@theia/cli": "1.73.1",
-    "electron": "39.8.7"
+    "electron": "39.8.7",
+    "electron-builder": "26.0.12"
   },
   "scripts": {
     "build": "yarn rebuild && theia build --app-target=electron --mode development",
     "build:prod": "yarn rebuild && theia build --app-target=electron",
     "clean": "theia clean",
+    "clean:dist": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "compile": "theia build --app-target=electron --mode development",
     "rebuild": "theia rebuild:electron --cacheRoot ../..",
+    "package:win": "yarn clean:dist && yarn rebuild && electron-builder --win nsis --publish never",
     "start": "theia start --plugins=local-dir:../../plugins",
     "start:debug": "yarn start --log-level=debug --remote-debugging-port=9222"
   }
