@@ -1,6 +1,6 @@
 import { ReactWidget } from '@theia/core/lib/browser';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
-import * as React from '@theia/core/shared/react';
+import React from '@theia/core/shared/react';
 import {
   IdeContextService,
   IdeContextSnapshot,
@@ -21,19 +21,19 @@ export class IdeAiWidget extends ReactWidget {
   static readonly LABEL = 'OpenFox';
 
   @inject(IdeContextService)
-  protected readonly ideContext: IdeContextService;
+  protected readonly ideContext!: IdeContextService;
 
   @inject(OpenFoxBridgeService)
-  protected readonly openFox: OpenFoxBridgeService;
+  protected readonly openFox!: OpenFoxBridgeService;
 
   @inject(SecurityBridgeService)
-  protected readonly security: SecurityBridgeService;
+  protected readonly security!: SecurityBridgeService;
 
   @inject(MigrationService)
-  protected readonly migration: MigrationService;
+  protected readonly migration!: MigrationService;
 
   @inject(YfastosBridgeService)
-  protected readonly yfastos: YfastosBridgeService;
+  protected readonly yfastos!: YfastosBridgeService;
 
   protected snapshot?: IdeContextSnapshot;
   protected openFoxStatus?: OpenFoxStatus;
