@@ -5,6 +5,11 @@ import path from 'node:path'
 import { access, appendFile, mkdir } from 'node:fs/promises'
 import { ensureOpenFoxBootstrap, syncCanonicalMcpToOpenFox } from './config-store.mjs'
 import { optimizeOpenFoxLocalProviders } from './openfox-provider-optimizer.mjs'
+import {
+  assertSecurityAuditAllowed,
+  auditWorkspaceSecurity,
+  formatSecurityAuditSummary,
+} from './workspace-security-auditor.mjs'
 
 export async function locateOpenFoxCli() {
   let serverEntry
@@ -47,6 +52,7 @@ export class OpenFoxRuntime extends EventEmitter {
     this.stopping = false
     this.logs = []
     this.lastExit = undefined
+    this.securityAudit = undefined
   }
 
   get baseUrl() {
@@ -58,6 +64,15 @@ export class OpenFoxRuntime extends EventEmitter {
     this.stopping = false
     this.lastExit = undefined
     await ensureOpenFoxBootstrap(this.paths, { port: this.port, workspace: this.workspace })
+    await mkdir(path.dirname(this.paths.logPath), { recursive: true })
+
+    this.securityAudit = await auditWorkspaceSecurity(this.workspace, {
+      additionalFiles: [this.paths.configPath, this.paths.canonicalMcpPath],
+    })
+    this.record('security', `${formatSecurityAuditSummary(this.securityAudit)}\n`)
+    this.emit('security-audit', structuredClone(this.securityAudit))
+    assertSecurityAuditAllowed(this.securityAudit)
+
     await optimizeOpenFoxLocalProviders(this.paths)
     await syncCanonicalMcpToOpenFox(this.paths, {
       ...process.env,
@@ -78,7 +93,6 @@ export class OpenFoxRuntime extends EventEmitter {
       WORKSPACE_PATH: this.workspace,
     }
 
-    await mkdir(path.dirname(this.paths.logPath), { recursive: true })
     this.child = spawn(
       nodeBinary,
       ['--require', compatibilityGuard, cliPath, '--port', String(this.port), '--no-browser'],
@@ -175,5 +189,9 @@ export class OpenFoxRuntime extends EventEmitter {
 
   getLogs() {
     return this.logs.join('')
+  }
+
+  getSecurityAudit() {
+    return this.securityAudit ? structuredClone(this.securityAudit) : undefined
   }
 }
