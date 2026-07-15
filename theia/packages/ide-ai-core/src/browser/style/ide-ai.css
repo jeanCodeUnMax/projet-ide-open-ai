@@ -1,0 +1,120 @@
+.ide-ai-widget {
+  overflow: auto;
+  background: var(--theia-editor-background);
+  color: var(--theia-foreground);
+}
+
+.ide-ai-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+}
+
+.ide-ai-dashboard-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ide-ai-dashboard-header h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.ide-ai-dashboard-header p,
+.ide-ai-service-card p {
+  margin: 0;
+  color: var(--theia-descriptionForeground);
+}
+
+.ide-ai-context-card,
+.ide-ai-service-card,
+.ide-ai-next-step {
+  border: 1px solid var(--theia-widget-border);
+  border-radius: 8px;
+  background: var(--theia-sideBar-background);
+  padding: 14px;
+}
+
+.ide-ai-context-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ide-ai-context-card code,
+.ide-ai-service-card code {
+  overflow-wrap: anywhere;
+  color: var(--theia-textLink-foreground);
+}
+
+.ide-ai-eyebrow {
+  color: var(--theia-descriptionForeground);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.ide-ai-service-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.ide-ai-service-card {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.ide-ai-service-card header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ide-ai-state-label {
+  margin-left: auto;
+  color: var(--theia-descriptionForeground);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.ide-ai-state-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--theia-descriptionForeground);
+}
+
+.state-ready .ide-ai-state-dot {
+  background: var(--theia-testing-iconPassed);
+}
+
+.state-degraded .ide-ai-state-dot {
+  background: var(--theia-editorWarning-foreground);
+}
+
+.state-offline .ide-ai-state-dot {
+  background: var(--theia-editorError-foreground);
+}
+
+.state-disabled .ide-ai-state-dot {
+  background: var(--theia-disabledForeground);
+}
+
+.ide-ai-next-step {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-left: 3px solid var(--theia-focusBorder);
+}
+
+.ide-ai-error {
+  border: 1px solid var(--theia-editorError-foreground);
+  border-radius: 6px;
+  padding: 10px;
+  color: var(--theia-editorError-foreground);
+}
