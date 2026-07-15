@@ -1,0 +1,91 @@
+name: Theia Windows Desktop
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'theia/**'
+      - '.github/workflows/theia-windows-desktop.yml'
+  pull_request:
+    paths:
+      - 'theia/**'
+      - '.github/workflows/theia-windows-desktop.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-desktop:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      NODE_OPTIONS: --max_old_space_size=4096
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Use Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Enable Yarn Classic
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Install Theia workspace
+        working-directory: theia
+        shell: pwsh
+        run: |
+          yarn install --non-interactive --network-timeout 600000 2>&1 | Tee-Object -FilePath theia-install-windows.log
+          exit $LASTEXITCODE
+
+      - name: Compile IDE-AI extension
+        working-directory: theia
+        shell: pwsh
+        run: |
+          yarn workspace @ide-ai/theia-core compile 2>&1 | Tee-Object -FilePath theia-compile-windows.log
+          exit $LASTEXITCODE
+
+      - name: Build Theia Electron desktop app
+        working-directory: theia
+        shell: pwsh
+        run: |
+          yarn workspace ide-ai-theia-electron build 2>&1 | Tee-Object -FilePath theia-build-windows.log
+          exit $LASTEXITCODE
+
+      - name: Package Windows installer
+        working-directory: theia
+        shell: pwsh
+        run: |
+          yarn workspace ide-ai-theia-electron package:win 2>&1 | Tee-Object -FilePath theia-package-windows.log
+          exit $LASTEXITCODE
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ide-ai-theia-windows
+          path: theia/applications/electron/dist/**
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Windows build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ide-ai-theia-windows-logs
+          path: |
+            theia/theia-install-windows.log
+            theia/theia-compile-windows.log
+            theia/theia-build-windows.log
+            theia/theia-package-windows.log
+          if-no-files-found: warn
+          retention-days: 7
