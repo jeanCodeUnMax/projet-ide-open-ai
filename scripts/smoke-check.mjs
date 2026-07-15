@@ -10,6 +10,8 @@ const required = [
   'electron/openfox-mistral-fetch-guard.cjs',
   'electron/lib/config-store.mjs',
   'electron/lib/editor-ipc.mjs',
+  'electron/lib/security-audit-ipc.mjs',
+  'electron/lib/workspace-security-auditor.mjs',
   'electron/lib/external-editor.mjs',
   'electron/lib/mistral-request-sanitizer.cjs',
   'electron/lib/openfox-hidden-files-guard.cjs',
@@ -36,12 +38,15 @@ const required = [
   'electron/windows/ide-shell.js',
   'electron/windows/ide-shell-dnd.js',
   'electron/windows/ide-shell-file-ops.js',
+  'electron/windows/ide-shell-security.js',
   'electron/windows/mcp-manager.html',
   'electron/windows/mcp-manager.js',
   'electron/windows/agent-rag-dashboard.html',
   'electron/windows/agent-rag-dashboard.js',
   'electron/windows/agent-rag-dashboard.css',
   'scripts/a2a-openfox-server.mjs',
+  'scripts/security-audit.mjs',
+  'docs/security/AI_OSINT_FEASIBILITY.md',
   'config/app-schema.json',
   'config/agents/orchestrator.agent-card.json',
   'README.md',
@@ -55,6 +60,9 @@ if (packageDocument.main !== 'electron/bootstrap.mjs') {
 }
 if (packageDocument.build?.extraMetadata?.main !== 'electron/bootstrap.mjs') {
   throw new Error('Le paquet distribué doit utiliser electron/bootstrap.mjs.')
+}
+if (packageDocument.scripts?.['security:audit'] !== 'node scripts/security-audit.mjs') {
+  throw new Error('La commande npm security:audit doit rester disponible.')
 }
 
 JSON.parse(await readFile(new URL('../config/app-schema.json', import.meta.url), 'utf8'))
