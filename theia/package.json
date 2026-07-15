@@ -1,0 +1,20 @@
+{
+  "name": "ide-ai-theia-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "yarn@1.22.22",
+  "workspaces": [
+    "applications/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "yarn workspace ide-ai-theia-electron build",
+    "compile": "yarn workspaces run compile",
+    "start": "yarn workspace ide-ai-theia-electron start",
+    "start:debug": "yarn workspace ide-ai-theia-electron start:debug",
+    "clean": "yarn workspaces run clean"
+  }
+}
