@@ -5,20 +5,8 @@ import { lstat, readdir, readFile } from 'node:fs/promises'
 const SEVERITIES = Object.freeze(['info', 'low', 'medium', 'high', 'critical'])
 const SEVERITY_RANK = new Map(SEVERITIES.map((severity, index) => [severity, index]))
 const DEFAULT_IGNORED_DIRECTORIES = new Set([
-  'node_modules',
-  'dist',
-  'build',
-  'release',
-  'coverage',
-  '.cache',
-  '.next',
-  '.nuxt',
-  '.turbo',
-  '.parcel-cache',
-  '__pycache__',
-  '.pytest_cache',
-  '.venv',
-  'venv',
+  'node_modules', 'dist', 'build', 'release', 'coverage', '.cache', '.next', '.nuxt', '.turbo',
+  '.parcel-cache', '__pycache__', '.pytest_cache', '.venv', 'venv',
 ])
 const TEXT_EXTENSIONS = new Set([
   '', '.c', '.cc', '.cfg', '.conf', '.cpp', '.cs', '.css', '.env', '.go', '.h', '.hpp', '.html', '.ini',
@@ -68,8 +56,7 @@ function lineNumberAt(content, index) {
 }
 
 function findingFingerprint(finding) {
-  return crypto
-    .createHash('sha256')
+  return crypto.createHash('sha256')
     .update([finding.ruleId, finding.file, finding.line ?? '', finding.message].join('|'))
     .digest('hex')
     .slice(0, 16)
@@ -90,14 +77,19 @@ function isLoopbackHostname(hostname) {
   return normalized === '127.0.0.1' || normalized === 'localhost' || normalized === '::1'
 }
 
+function pathIsWithin(relativePath, directory) {
+  const normalized = portablePath(relativePath).toLowerCase().replace(/^\.\//, '')
+  const prefix = directory.toLowerCase().replace(/^\.\//, '').replace(/\/+$/, '')
+  return normalized.startsWith(`${prefix}/`) || normalized.includes(`/${prefix}/`)
+}
+
 function isInstructionSurface(relativePath) {
   const normalized = portablePath(relativePath).toLowerCase()
   const basename = path.posix.basename(normalized)
   return INSTRUCTION_FILES.has(basename)
-    || normalized.includes('/.cursor/rules/')
-    || normalized.includes('/.github/instructions/')
-    || normalized.endsWith('/.github/copilot-instructions.md')
-    || normalized.includes('/.openfox/agents/')
+    || pathIsWithin(normalized, '.cursor/rules')
+    || pathIsWithin(normalized, '.github/instructions')
+    || pathIsWithin(normalized, '.openfox/agents')
 }
 
 function isTextCandidate(relativePath) {
@@ -112,11 +104,10 @@ function packageSpecIsPinned(spec) {
   const value = String(spec ?? '').trim()
   if (!value || value.startsWith('-') || value.startsWith('.') || value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value)) return true
   if (/^(?:https?|git\+|file):/i.test(value)) return true
-  if (value.startsWith('@')) {
-    const slash = value.indexOf('/')
-    return slash > 1 && value.indexOf('@', slash) > slash
-  }
-  return value.lastIndexOf('@') > 0
+  const version = value.startsWith('@')
+    ? value.slice(value.indexOf('/') + 1).split('@')[1]
+    : value.split('@')[1]
+  return Boolean(version && /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version))
 }
 
 function mcpPackageArgument(command, args = []) {
@@ -179,7 +170,6 @@ function addPatternFindings(content, file, findings) {
 
 function addInstructionFindings(content, file, findings) {
   if (!isInstructionSurface(file)) return
-
   HIDDEN_UNICODE_PATTERN.lastIndex = 0
   let hidden
   while ((hidden = HIDDEN_UNICODE_PATTERN.exec(content)) !== null) {
@@ -193,7 +183,6 @@ function addInstructionFindings(content, file, findings) {
       remediation: 'Afficher les caractères invisibles, vérifier la ligne puis supprimer tout caractère non justifié.',
     }))
   }
-
   for (const pattern of SUSPICIOUS_INSTRUCTION_PATTERNS) {
     const match = pattern.exec(content)
     if (!match) continue
@@ -212,11 +201,7 @@ function addInstructionFindings(content, file, findings) {
 function addPackageFindings(content, file, findings) {
   if (path.posix.basename(portablePath(file)).toLowerCase() !== 'package.json') return
   let document
-  try {
-    document = JSON.parse(content)
-  } catch {
-    return
-  }
+  try { document = JSON.parse(content) } catch { return }
   const scripts = document?.scripts
   if (!scripts || typeof scripts !== 'object') return
   for (const name of ['preinstall', 'install', 'postinstall', 'prepare']) {
@@ -237,14 +222,8 @@ function addPackageFindings(content, file, findings) {
 function addMcpFindings(content, file, findings) {
   if (!/mcp/i.test(file) && !content.includes('"mcpServers"')) return
   let document
-  try {
-    document = JSON.parse(content)
-  } catch {
-    return
-  }
-  const servers = document?.mcpServers && typeof document.mcpServers === 'object'
-    ? document.mcpServers
-    : document
+  try { document = JSON.parse(content) } catch { return }
+  const servers = document?.mcpServers && typeof document.mcpServers === 'object' ? document.mcpServers : document
   if (!servers || typeof servers !== 'object' || Array.isArray(servers)) return
 
   for (const [name, config] of Object.entries(servers)) {
@@ -292,38 +271,33 @@ function addMcpFindings(content, file, findings) {
     }
 
     const rawUrl = config.url ?? config.serverUrl
-    if (typeof rawUrl === 'string') {
-      try {
-        const parsed = new URL(rawUrl)
-        if (!isLoopbackHostname(parsed.hostname)) {
-          findings.push(createFinding({
-            ruleId: parsed.protocol === 'http:' ? 'mcp.remote-plaintext' : 'mcp.remote-endpoint',
-            severity: parsed.protocol === 'http:' ? 'high' : 'medium',
-            category: 'mcp',
-            file,
-            message: `Le serveur MCP « ${name} » communique avec un endpoint distant${parsed.protocol === 'http:' ? ' sans TLS' : ''}.`,
-            remediation: 'Vérifier l’identité du serveur, ses permissions, son certificat et les données transmises. Préférer HTTPS et une liste de confiance.',
-          }))
-        }
-      } catch {
+    if (typeof rawUrl !== 'string') continue
+    try {
+      const parsed = new URL(rawUrl)
+      if (!isLoopbackHostname(parsed.hostname)) {
         findings.push(createFinding({
-          ruleId: 'mcp.invalid-url',
-          severity: 'medium',
+          ruleId: parsed.protocol === 'http:' ? 'mcp.remote-plaintext' : 'mcp.remote-endpoint',
+          severity: parsed.protocol === 'http:' ? 'high' : 'medium',
           category: 'mcp',
           file,
-          message: `Le serveur MCP « ${name} » contient une URL invalide.`,
-          remediation: 'Corriger l’URL avant d’activer ce serveur.',
+          message: `Le serveur MCP « ${name} » communique avec un endpoint distant${parsed.protocol === 'http:' ? ' sans TLS' : ''}.`,
+          remediation: 'Vérifier l’identité du serveur, ses permissions, son certificat et les données transmises. Préférer HTTPS et une liste de confiance.',
         }))
       }
+    } catch {
+      findings.push(createFinding({
+        ruleId: 'mcp.invalid-url',
+        severity: 'medium',
+        category: 'mcp',
+        file,
+        message: `Le serveur MCP « ${name} » contient une URL invalide.`,
+        remediation: 'Corriger l’URL avant d’activer ce serveur.',
+      }))
     }
   }
 }
 
-async function collectWorkspaceFiles(root, {
-  maxFiles,
-  maxFileBytes,
-  ignoredDirectories,
-}, findings) {
+async function collectWorkspaceFiles(root, { maxFiles, maxFileBytes, ignoredDirectories }, findings) {
   const files = []
   const queue = [{ absolute: root, relative: '' }]
   let skippedFiles = 0
@@ -331,12 +305,7 @@ async function collectWorkspaceFiles(root, {
   while (queue.length > 0 && files.length < maxFiles) {
     const current = queue.shift()
     let entries
-    try {
-      entries = await readdir(current.absolute, { withFileTypes: true })
-    } catch {
-      skippedFiles += 1
-      continue
-    }
+    try { entries = await readdir(current.absolute, { withFileTypes: true }) } catch { skippedFiles += 1; continue }
 
     for (const entry of entries) {
       const relative = current.relative ? `${current.relative}/${entry.name}` : entry.name
@@ -357,22 +326,16 @@ async function collectWorkspaceFiles(root, {
           queue.push({ absolute: path.join(absolute, 'hooks'), relative: `${relative}/hooks` })
           continue
         }
-        if (ignoredDirectories.has(entry.name)) continue
-        queue.push({ absolute, relative })
+        if (!ignoredDirectories.has(entry.name)) queue.push({ absolute, relative })
         continue
       }
       if (!entry.isFile() || !isTextCandidate(relative)) continue
       try {
         const details = await lstat(absolute)
-        if (details.size > maxFileBytes) {
-          skippedFiles += 1
-          continue
-        }
+        if (details.size > maxFileBytes) { skippedFiles += 1; continue }
         files.push({ absolute, relative: portablePath(relative), size: details.size })
         if (files.length >= maxFiles) break
-      } catch {
-        skippedFiles += 1
-      }
+      } catch { skippedFiles += 1 }
     }
   }
 
@@ -392,12 +355,7 @@ function summarize(findings, metadata) {
   const counts = Object.fromEntries(SEVERITIES.map((severity) => [severity, 0]))
   for (const finding of findings) counts[finding.severity] += 1
   const highest = [...findings].sort((a, b) => SEVERITY_RANK.get(b.severity) - SEVERITY_RANK.get(a.severity))[0]
-  return {
-    riskLevel: highest?.severity ?? 'info',
-    counts,
-    totalFindings: findings.length,
-    ...metadata,
-  }
+  return { riskLevel: highest?.severity ?? 'info', counts, totalFindings: findings.length, ...metadata }
 }
 
 export async function auditWorkspaceSecurity(workspace, {
@@ -432,21 +390,21 @@ export async function auditWorkspaceSecurity(workspace, {
   let scannedBytes = 0
   for (const candidate of candidates) {
     let content
-    try {
-      content = await readFile(candidate.absolute, 'utf8')
-    } catch {
-      continue
-    }
+    try { content = await readFile(candidate.absolute, 'utf8') } catch { continue }
     scannedBytes += candidate.size
     addPatternFindings(content, candidate.relative, findings)
     addInstructionFindings(content, candidate.relative, findings)
     addPackageFindings(content, candidate.relative, findings)
     addMcpFindings(content, candidate.relative, findings)
 
-    if (portablePath(candidate.relative).includes('/.git/hooks/') && !candidate.relative.endsWith('.sample')) {
+    const normalized = portablePath(candidate.relative).toLowerCase().replace(/^\.\//, '')
+    const isGitHook = (normalized.startsWith('.git/hooks/') || normalized.includes('/.git/hooks/'))
+      && !normalized.endsWith('.sample')
+    if (isGitHook) {
+      const dangerous = DANGEROUS_COMMAND_PATTERN.test(content)
       findings.push(createFinding({
-        ruleId: DANGEROUS_COMMAND_PATTERN.test(content) ? 'git.hook-dangerous' : 'git.hook-active',
-        severity: DANGEROUS_COMMAND_PATTERN.test(content) ? 'critical' : 'high',
+        ruleId: dangerous ? 'git.hook-dangerous' : 'git.hook-active',
+        severity: dangerous ? 'critical' : 'high',
         category: 'supply-chain',
         file: candidate.relative,
         message: 'Un hook Git actif peut exécuter du code lors d’une opération Git.',
