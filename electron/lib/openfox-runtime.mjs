@@ -9,7 +9,7 @@ import {
   assertSecurityAuditAllowed,
   auditWorkspaceSecurity,
   formatSecurityAuditSummary,
-} from './workspace-security-auditor.mjs'
+} from './workspace-security-policy.mjs'
 
 export async function locateOpenFoxCli() {
   let serverEntry
@@ -136,8 +136,6 @@ export class OpenFoxRuntime extends EventEmitter {
       try {
         const response = await fetch(`${this.baseUrl}/api/health`, { signal: AbortSignal.timeout(1_500) })
         if (response.ok) {
-          // A first successful response can come from a process that is already
-          // shutting down. Confirm stability before allowing Electron to load a session URL.
           await new Promise((resolve) => setTimeout(resolve, 650))
           if (!this.child) {
             throw new Error(`OpenFox s’est arrêté juste après son contrôle de santé.\n${this.startupDiagnostics()}`)
