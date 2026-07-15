@@ -66,7 +66,11 @@
     "@theia/userstorage": "1.73.1",
     "@theia/variable-resolver": "1.73.1",
     "@theia/vsx-registry": "1.73.1",
-    "@theia/workspace": "1.73.1"
+    "@theia/workspace": "1.73.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.9.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@theia/cli": "1.73.1",
