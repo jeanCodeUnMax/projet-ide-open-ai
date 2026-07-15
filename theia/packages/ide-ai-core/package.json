@@ -1,0 +1,37 @@
+{
+  "name": "@ide-ai/theia-core",
+  "version": "0.1.0",
+  "description": "IDE-AI integration services for Eclipse Theia",
+  "license": "MIT",
+  "keywords": [
+    "theia-extension",
+    "ide-ai",
+    "openfox"
+  ],
+  "files": [
+    "lib",
+    "src"
+  ],
+  "dependencies": {
+    "@theia/core": "1.73.1",
+    "@theia/workspace": "1.73.1"
+  },
+  "devDependencies": {
+    "@theia/ext-scripts": "1.73.1",
+    "typescript": "^5.9.2"
+  },
+  "theiaExtensions": [
+    {
+      "frontend": "lib/browser/frontend-module",
+      "backend": "lib/node/backend-module"
+    }
+  ],
+  "scripts": {
+    "build": "theiaext build",
+    "clean": "theiaext clean",
+    "compile": "theiaext compile",
+    "lint": "theiaext lint",
+    "test": "theiaext test",
+    "watch": "theiaext watch"
+  }
+}
