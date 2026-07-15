@@ -30,9 +30,9 @@
     }
   ],
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -b && node scripts/copy-assets.mjs",
     "clean": "rimraf lib tsconfig.tsbuildinfo",
-    "compile": "tsc -b",
+    "compile": "tsc -b && node scripts/copy-assets.mjs",
     "test": "node --test",
     "watch": "tsc -b -w --preserveWatchOutput"
   }
