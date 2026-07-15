@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerEditorIpc } from './lib/editor-ipc.mjs'
 import { registerWorkspaceDropIpc } from './lib/workspace-drop-ipc.mjs'
+import { registerSecurityAuditIpc } from './lib/security-audit-ipc.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const SESSION_PRELOADS = Object.freeze([
@@ -20,6 +21,7 @@ const SESSION_PRELOADS = Object.freeze([
 // app.whenReady(). Their workspace is resolved lazily for each invocation.
 registerEditorIpc()
 registerWorkspaceDropIpc()
+registerSecurityAuditIpc()
 
 // Register this callback before loading electron/main.mjs. When Electron becomes
 // ready, its promise reaction runs first and installs the session preloads before
