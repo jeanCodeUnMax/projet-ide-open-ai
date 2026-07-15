@@ -58,8 +58,25 @@ jobs:
         run: exit 1
 
       - name: Compile IDE-AI extension
+        id: compile
+        continue-on-error: true
         working-directory: theia
-        run: yarn workspace @ide-ai/theia-core compile
+        shell: bash
+        run: |
+          set -o pipefail
+          yarn workspace @ide-ai/theia-core compile 2>&1 | tee theia-compile.log
+
+      - name: Upload Theia compile diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: theia-compile-log
+          path: theia/theia-compile.log
+          if-no-files-found: warn
+
+      - name: Stop after compilation failure
+        if: steps.compile.outcome == 'failure'
+        run: exit 1
 
       - name: Build Theia Electron application
         working-directory: theia
