@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "IDE-AI integration services for Eclipse Theia",
   "license": "MIT",
+  "private": true,
   "keywords": [
     "theia-extension",
     "ide-ai",
@@ -17,6 +18,8 @@
     "@theia/workspace": "1.73.1"
   },
   "devDependencies": {
+    "@types/react": "^18.3.24",
+    "@types/react-dom": "^18.3.7",
     "rimraf": "^6.0.1",
     "typescript": "^5.9.2"
   },
