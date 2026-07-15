@@ -2,9 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 
 const require = createRequire(import.meta.url)
-const preloadPath = new URL('../electron/openfox-workflow-designer-preload.cjs', import.meta.url)
+const preloadUrl = new URL('../electron/openfox-workflow-designer-preload.cjs', import.meta.url)
+const preloadPath = fileURLToPath(preloadUrl)
 const { createWorkflowTemplateCatalog, mainWorldWorkflowDesignerEnhancer } = require(preloadPath)
 
 test('le catalogue fournit plusieurs modèles de workflows prêts à dupliquer', () => {
@@ -39,7 +41,7 @@ test('le catalogue fournit plusieurs modèles de workflows prêts à dupliquer',
 })
 
 test('le designer permet le déplacement libre horizontal et vertical des blocs', async () => {
-  const source = await readFile(preloadPath, 'utf8')
+  const source = await readFile(preloadUrl, 'utf8')
   const enhancerSource = mainWorldWorkflowDesignerEnhancer.toString()
 
   assert.match(source, /document\.addEventListener\(['"]pointerdown['"]/)
@@ -60,7 +62,7 @@ test('le designer permet le déplacement libre horizontal et vertical des blocs'
 })
 
 test('le preload injecte le designer dans le monde principal de la page OpenFox locale', async () => {
-  const source = await readFile(preloadPath, 'utf8')
+  const source = await readFile(preloadUrl, 'utf8')
   assert.match(source, /contextBridge\?\.executeInMainWorld/)
   assert.match(source, /func:\s*mainWorldWorkflowDesignerEnhancer/)
   assert.match(source, /createWorkflowTemplateCatalog\(\)/)
