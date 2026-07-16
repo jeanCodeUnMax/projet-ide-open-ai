@@ -1,4 +1,9 @@
-import { WidgetFactory, WebSocketConnectionProvider, bindViewContribution } from '@theia/core/lib/browser';
+import {
+  FrontendApplicationContribution,
+  WidgetFactory,
+  WebSocketConnectionProvider,
+  bindViewContribution,
+} from '@theia/core/lib/browser';
 import { ContainerModule } from '@theia/core/shared/inversify';
 import {
   IdeContextService,
@@ -38,6 +43,7 @@ export default new ContainerModule(bind => {
   ).inSingletonScope();
 
   bindViewContribution(bind, IdeAiViewContribution);
+  bind(FrontendApplicationContribution).toService(IdeAiViewContribution);
   bind(IdeAiWidget).toSelf();
   bind(WidgetFactory).toDynamicValue(ctx => ({
     id: IdeAiWidget.ID,
