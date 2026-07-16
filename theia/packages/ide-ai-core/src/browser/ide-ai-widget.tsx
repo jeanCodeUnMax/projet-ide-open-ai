@@ -4,15 +4,8 @@ import React from '@theia/core/shared/react';
 import {
   IdeContextService,
   IdeContextSnapshot,
-  MigrationService,
-  MigrationStatus,
   OpenFoxBridgeService,
   OpenFoxStatus,
-  SecurityBridgeService,
-  SecurityStatus,
-  ServiceHealth,
-  YfastosBridgeService,
-  YfastosStatus,
 } from '../common/ide-ai-protocol';
 
 @injectable()
@@ -26,28 +19,17 @@ export class IdeAiWidget extends ReactWidget {
   @inject(OpenFoxBridgeService)
   protected readonly openFox!: OpenFoxBridgeService;
 
-  @inject(SecurityBridgeService)
-  protected readonly security!: SecurityBridgeService;
-
-  @inject(MigrationService)
-  protected readonly migration!: MigrationService;
-
-  @inject(YfastosBridgeService)
-  protected readonly yfastos!: YfastosBridgeService;
-
   protected snapshot?: IdeContextSnapshot;
   protected openFoxStatus?: OpenFoxStatus;
-  protected securityStatus?: SecurityStatus;
-  protected migrationStatus?: MigrationStatus;
-  protected yfastosStatus?: YfastosStatus;
   protected loading = false;
   protected error?: string;
+  protected frameRevision = 0;
 
   @postConstruct()
   protected init(): void {
     this.id = IdeAiWidget.ID;
     this.title.label = IdeAiWidget.LABEL;
-    this.title.caption = 'OpenFox — orchestration IDE-AI';
+    this.title.caption = 'OpenFox — assistant agentique IDE-AI';
     this.title.iconClass = 'codicon codicon-sparkle';
     this.title.closable = true;
     this.node.tabIndex = 0;
@@ -63,18 +45,12 @@ export class IdeAiWidget extends ReactWidget {
     this.error = undefined;
     this.update();
     try {
-      const [snapshot, openFoxStatus, securityStatus, migrationStatus, yfastosStatus] = await Promise.all([
+      const [snapshot, openFoxStatus] = await Promise.all([
         this.ideContext.snapshot(),
         this.openFox.status(),
-        this.security.status(),
-        this.migration.status(),
-        this.yfastos.status(),
       ]);
       this.snapshot = snapshot;
       this.openFoxStatus = openFoxStatus;
-      this.securityStatus = securityStatus;
-      this.migrationStatus = migrationStatus;
-      this.yfastosStatus = yfastosStatus;
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
     } finally {
@@ -83,58 +59,79 @@ export class IdeAiWidget extends ReactWidget {
     }
   }
 
-  protected serviceCard(label: string, status: ServiceHealth | undefined, details?: React.ReactNode): React.ReactNode {
-    const state = status?.state ?? 'offline';
-    return (
-      <section className={`ide-ai-service-card state-${state}`}>
-        <header>
-          <span className="ide-ai-state-dot" aria-hidden="true" />
-          <strong>{label}</strong>
-          <span className="ide-ai-state-label">{state}</span>
-        </header>
-        <p>{status?.message ?? 'État non disponible'}</p>
-        {details}
-      </section>
-    );
+  protected async restart(): Promise<void> {
+    if (this.loading) {
+      return;
+    }
+    this.loading = true;
+    this.error = undefined;
+    this.update();
+    try {
+      this.openFoxStatus = await this.openFox.restart();
+      this.snapshot = await this.ideContext.snapshot();
+      this.frameRevision += 1;
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.loading = false;
+      this.update();
+    }
+  }
+
+  protected reloadFrame(): void {
+    this.frameRevision += 1;
+    this.update();
   }
 
   protected render(): React.ReactNode {
+    const status = this.openFoxStatus;
+    const ready = status?.state === 'ready' && Boolean(status.baseUrl);
+    const workspaceName = this.snapshot?.workspace.name ?? 'Aucun workspace';
+
     return (
-      <div className="ide-ai-dashboard">
-        <div className="ide-ai-dashboard-header">
-          <div>
-            <h2>IDE-AI / OpenFox</h2>
-            <p>Services natifs de la migration Eclipse Theia.</p>
+      <div className="ide-ai-openfox-shell">
+        <header className="ide-ai-openfox-toolbar">
+          <div className="ide-ai-openfox-identity">
+            <span className={`ide-ai-state-dot state-${status?.state ?? 'offline'}`} aria-hidden="true" />
+            <div>
+              <strong>OpenFox</strong>
+              <small>{workspaceName} · {status?.message ?? 'Initialisation…'}</small>
+            </div>
           </div>
-          <button className="theia-button secondary" disabled={this.loading} onClick={() => void this.refresh()}>
-            {this.loading ? 'Actualisation…' : 'Actualiser'}
-          </button>
-        </div>
+          <div className="ide-ai-openfox-actions">
+            <button className="theia-button secondary" disabled={this.loading || !ready} onClick={() => this.reloadFrame()}>
+              Recharger
+            </button>
+            <button className="theia-button" disabled={this.loading} onClick={() => void this.restart()}>
+              {this.loading ? 'Démarrage…' : 'Redémarrer'}
+            </button>
+          </div>
+        </header>
 
         {this.error && <div className="ide-ai-error">{this.error}</div>}
 
-        <section className="ide-ai-context-card">
-          <span className="ide-ai-eyebrow">WORKSPACE ACTIF</span>
-          <strong>{this.snapshot?.workspace.name ?? 'Aucun workspace'}</strong>
-          <code>{this.snapshot?.workspace.uri ?? 'Ouvre un dossier dans Theia.'}</code>
-          <small>{this.snapshot?.capabilities.length ?? 0} capacités IDE déclarées</small>
-        </section>
-
-        <div className="ide-ai-service-grid">
-          {this.serviceCard('OpenFox Bridge', this.openFoxStatus,
-            <code>{this.openFoxStatus?.baseUrl}</code>)}
-          {this.serviceCard('Security Gate', this.securityStatus,
-            <small>Mode : {this.securityStatus?.mode ?? 'inconnu'} · Gate : {this.securityStatus?.gateEnabled ? 'active' : 'observation'}</small>)}
-          {this.serviceCard('Migration', this.migrationStatus,
-            <small>Schéma : v{this.migrationStatus?.schemaVersion ?? 1}</small>)}
-          {this.serviceCard('Yfastos Contract', this.yfastosStatus,
-            <code>{this.yfastosStatus?.endpoint ?? 'non configuré'}</code>)}
-        </div>
-
-        <section className="ide-ai-next-step">
-          <strong>Prochain portage</strong>
-          <span>Connecter le runtime OpenFox existant au backend Theia, puis alimenter le Context Bridge avec éditeurs, diagnostics, Git, terminal, tâches, tests et mini-browser.</span>
-        </section>
+        {ready ? (
+          <iframe
+            key={`${status?.baseUrl}-${this.frameRevision}`}
+            className="ide-ai-openfox-frame"
+            src={status?.baseUrl}
+            title="OpenFox"
+            allow="clipboard-read; clipboard-write"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <section className="ide-ai-openfox-startup">
+            <span className="codicon codicon-loading codicon-modifier-spin" aria-hidden="true" />
+            <h2>{this.loading ? 'Démarrage d’OpenFox' : 'OpenFox indisponible'}</h2>
+            <p>{status?.message ?? 'Theia prépare le runtime OpenFox et le workspace actif.'}</p>
+            {status?.logsTail && <pre>{status.logsTail}</pre>}
+            {!this.loading && (
+              <button className="theia-button" onClick={() => void this.refresh()}>
+                Démarrer OpenFox
+              </button>
+            )}
+          </section>
+        )}
       </div>
     );
   }
