@@ -13,6 +13,7 @@ import {
   YfastosBridgeService,
   YfastosStatus,
 } from '../common/ide-ai-protocol';
+import { ManagedOpenFoxRuntime, ManagedOpenFoxSnapshot } from './openfox-runtime';
 
 const now = (): string => new Date().toISOString();
 
@@ -59,11 +60,38 @@ export class IdeContextServiceImpl implements IdeContextService {
 
 @injectable()
 export class OpenFoxBridgeServiceImpl implements OpenFoxBridgeService {
+  @inject(WorkspaceServer)
+  protected readonly workspaceServer!: WorkspaceServer;
+
+  private readonly runtime = new ManagedOpenFoxRuntime();
+
   async status(): Promise<OpenFoxStatus> {
-    const baseUrl = (process.env.IDE_AI_OPENFOX_URL || 'http://127.0.0.1:10369').replace(/\/$/, '');
-    const health = await probe(`${baseUrl}/api/health`);
-    const payload = health.payload as { version?: string } | undefined;
-    return { state: health.state, message: health.message, checkedAt: health.checkedAt, baseUrl, version: payload?.version };
+    const workspaceUri = await this.workspaceServer.getMostRecentlyUsedWorkspace();
+    return this.toStatus(await this.runtime.ensureStarted(workspaceUri));
+  }
+
+  async start(): Promise<OpenFoxStatus> {
+    const workspaceUri = await this.workspaceServer.getMostRecentlyUsedWorkspace();
+    return this.toStatus(await this.runtime.ensureStarted(workspaceUri));
+  }
+
+  async restart(): Promise<OpenFoxStatus> {
+    const workspaceUri = await this.workspaceServer.getMostRecentlyUsedWorkspace();
+    return this.toStatus(await this.runtime.restart(workspaceUri));
+  }
+
+  async stop(): Promise<OpenFoxStatus> {
+    return this.toStatus(await this.runtime.stop());
+  }
+
+  private async toStatus(snapshot: ManagedOpenFoxSnapshot): Promise<OpenFoxStatus> {
+    let version: string | undefined;
+    if (snapshot.state === 'ready' && snapshot.baseUrl) {
+      const health = await probe(`${snapshot.baseUrl}/api/health`);
+      const payload = health.payload as { version?: string } | undefined;
+      version = payload?.version;
+    }
+    return { ...snapshot, version };
   }
 }
 
@@ -97,7 +125,7 @@ export class YfastosBridgeServiceImpl implements YfastosBridgeService {
     if (!endpoint) {
       return {
         state: 'disabled',
-        message: 'Contrat disponible, endpoint non configuré',
+        message: 'Intégration externe optionnelle non configurée',
         checkedAt: now(),
         configured: false,
       };
