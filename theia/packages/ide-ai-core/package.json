@@ -15,8 +15,7 @@
   ],
   "dependencies": {
     "@theia/core": "1.73.1",
-    "@theia/workspace": "1.73.1",
-    "openfox": "2.0.50"
+    "@theia/workspace": "1.73.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.24",
