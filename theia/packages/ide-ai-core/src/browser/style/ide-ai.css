@@ -1,120 +1,132 @@
 .ide-ai-widget {
-  overflow: auto;
+  overflow: hidden;
   background: var(--theia-editor-background);
   color: var(--theia-foreground);
 }
 
-.ide-ai-dashboard {
+.ide-ai-openfox-shell {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 18px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--theia-editor-background);
 }
 
-.ide-ai-dashboard-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.ide-ai-dashboard-header h2 {
-  margin: 0 0 4px;
-  font-size: 18px;
-}
-
-.ide-ai-dashboard-header p,
-.ide-ai-service-card p {
-  margin: 0;
-  color: var(--theia-descriptionForeground);
-}
-
-.ide-ai-context-card,
-.ide-ai-service-card,
-.ide-ai-next-step {
-  border: 1px solid var(--theia-widget-border);
-  border-radius: 8px;
-  background: var(--theia-sideBar-background);
-  padding: 14px;
-}
-
-.ide-ai-context-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.ide-ai-context-card code,
-.ide-ai-service-card code {
-  overflow-wrap: anywhere;
-  color: var(--theia-textLink-foreground);
-}
-
-.ide-ai-eyebrow {
-  color: var(--theia-descriptionForeground);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-}
-
-.ide-ai-service-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-}
-
-.ide-ai-service-card {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-
-.ide-ai-service-card header {
+.ide-ai-openfox-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--theia-widget-border);
+  background: var(--theia-sideBar-background);
 }
 
-.ide-ai-state-label {
-  margin-left: auto;
+.ide-ai-openfox-identity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.ide-ai-openfox-identity > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ide-ai-openfox-identity strong,
+.ide-ai-openfox-identity small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ide-ai-openfox-identity small {
   color: var(--theia-descriptionForeground);
-  font-size: 11px;
-  text-transform: uppercase;
+}
+
+.ide-ai-openfox-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.ide-ai-openfox-frame {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  border: 0;
+  background: #0b0d12;
+}
+
+.ide-ai-openfox-startup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex: 1 1 auto;
+  padding: 24px;
+  text-align: center;
+}
+
+.ide-ai-openfox-startup > .codicon {
+  font-size: 28px;
+  color: var(--theia-focusBorder);
+}
+
+.ide-ai-openfox-startup h2,
+.ide-ai-openfox-startup p {
+  margin: 0;
+}
+
+.ide-ai-openfox-startup p {
+  max-width: 560px;
+  color: var(--theia-descriptionForeground);
+}
+
+.ide-ai-openfox-startup pre {
+  width: min(100%, 760px);
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--theia-widget-border);
+  border-radius: 6px;
+  background: var(--theia-textCodeBlock-background);
+  color: var(--theia-foreground);
+  text-align: left;
+  white-space: pre-wrap;
 }
 
 .ide-ai-state-dot {
   width: 9px;
   height: 9px;
+  flex: 0 0 auto;
   border-radius: 50%;
   background: var(--theia-descriptionForeground);
 }
 
-.state-ready .ide-ai-state-dot {
+.ide-ai-state-dot.state-ready {
   background: var(--theia-testing-iconPassed);
 }
 
-.state-degraded .ide-ai-state-dot {
+.ide-ai-state-dot.state-degraded {
   background: var(--theia-editorWarning-foreground);
 }
 
-.state-offline .ide-ai-state-dot {
+.ide-ai-state-dot.state-offline {
   background: var(--theia-editorError-foreground);
 }
 
-.state-disabled .ide-ai-state-dot {
-  background: var(--theia-disabledForeground);
-}
-
-.ide-ai-next-step {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  border-left: 3px solid var(--theia-focusBorder);
-}
-
 .ide-ai-error {
-  border: 1px solid var(--theia-editorError-foreground);
-  border-radius: 6px;
-  padding: 10px;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--theia-editorError-foreground);
+  padding: 9px 12px;
   color: var(--theia-editorError-foreground);
+  background: color-mix(in srgb, var(--theia-editorError-foreground) 8%, transparent);
 }
