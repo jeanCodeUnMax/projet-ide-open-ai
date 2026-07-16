@@ -2,14 +2,6 @@ name: Theia Windows Desktop
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'theia/**'
-      - '.github/workflows/theia-windows-desktop.yml'
-  pull_request:
-    paths:
-      - 'theia/**'
-      - '.github/workflows/theia-windows-desktop.yml'
 
 permissions:
   contents: read
@@ -73,12 +65,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ide-ai-theia-windows
-          path: theia/applications/electron/dist/**
+          path: theia/applications/electron/dist/IDE-AI-Setup-*.exe
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 
       - name: Upload Windows build diagnostics
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: ide-ai-theia-windows-logs
@@ -88,4 +80,4 @@ jobs:
             theia/theia-build-windows.log
             theia/theia-package-windows.log
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 1
