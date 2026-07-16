@@ -1,14 +1,32 @@
-# IDE-AI — Spike Eclipse Theia
+# IDE-AI — Migration Eclipse Theia
 
-Ce dossier contient la première application Eclipse Theia native du projet. Il est isolé du shell Electron historique afin de permettre une migration progressive et réversible.
+Ce dossier contient l’application Eclipse Theia native du projet. Il reste isolé du shell Electron historique afin de permettre une migration progressive et réversible.
 
-## Objectifs du spike
+## Responsabilités
 
-- utiliser Theia comme propriétaire du workspace, des éditeurs, du terminal, des tâches, du SCM, du debug, des tests et du mini-browser ;
-- installer OpenFox comme activité IA principale ;
-- ne pas inclure `@theia/ai-copilot` ni `@theia/ai-ide` afin d’éviter un second orchestrateur agentique ;
-- fournir des contrats typés à OpenFox, Security Gate, Migration et Yfastos ;
-- conserver le projet Electron actuel opérationnel pendant tout le portage.
+```text
+Theia      → workspace, éditeurs, terminal, Git, tâches, tests, debug et mini-browser
+OpenFox    → chat, sessions, agents, workflows, modèles, MCP, skills et commandes
+Security   → autorisations, secrets, gates MCP et audit
+Yfastos    → système externe propriétaire de la mémoire, du watchdog et de la synchronisation
+```
+
+Theia ne développe pas Yfastos. Elle expose uniquement un bridge optionnel pour publier des événements IDE et recevoir du contexte externe.
+
+## État actuel
+
+Le premier bridge fonctionnel OpenFox est présent :
+
+- le backend Theia recherche l’installation OpenFox existante à la racine du dépôt ;
+- il sélectionne un port libre sur `127.0.0.1` ;
+- il réutilise le profil OpenFox historique et ses configurations ;
+- il transmet le workspace actif avec `WORKSPACE_PATH` ;
+- il démarre et supervise le processus OpenFox ;
+- il attend `/api/health` avant de déclarer le service prêt ;
+- il arrête le processus avec Theia ;
+- l’interface OpenFox complète est intégrée dans le panneau droit de Theia.
+
+La synchronisation détaillée des éditeurs, diagnostics, Git, terminal, tâches, tests et mini-browser constitue le jalon suivant.
 
 ## Structure
 
@@ -19,56 +37,60 @@ theia/
 └─ packages/
    └─ ide-ai-core/
       ├─ src/common/            contrats JSON-RPC
-      ├─ src/node/              services backend
-      └─ src/browser/           vue OpenFox native
+      ├─ src/node/              runtime et services backend
+      └─ src/browser/           panneau OpenFox natif
 ```
 
-## Services présents
-
-| Service | État du spike |
-|---|---|
-| IDE Context | workspace et capacités déclarées |
-| OpenFox Bridge | contrôle de santé d’un runtime OpenFox local |
-| Security Bridge | exposition du mode de politique |
-| Migration Service | contrat v1, import/export encore à porter |
-| Yfastos Bridge | contrat et contrôle de santé facultatif |
-
-## Variables
+## Variables optionnelles
 
 ```text
-IDE_AI_OPENFOX_URL=http://127.0.0.1:10369
+IDE_AI_OPENFOX_PORT=10369
+IDE_AI_OPENFOX_CLI=E:\chemin\vers\openfox\dist\cli\index.js
+IDE_AI_OPENFOX_USER_DATA=C:\chemin\vers\ancien-userData
+IDE_AI_NODE_BINARY=C:\Program Files\nodejs\node.exe
 IDE_AI_SECURITY_MODE=protected
 IDE_AI_YFASTOS_URL=http://127.0.0.1:<port>
 ```
 
-Yfastos reste optionnel. Son absence ne bloque pas Theia.
+En fonctionnement normal, aucune variable OpenFox n’est nécessaire : le bridge recherche automatiquement le paquet installé par `npm install` à la racine.
 
 ## Prérequis
 
 - Node.js 22 ou supérieur ;
 - Yarn Classic 1.22.x ;
+- `npm install` exécuté à la racine pour disposer d’OpenFox ;
 - outils de compilation natifs requis par Electron/Theia.
 
-## Installation et démarrage
+## Installation
 
 Depuis la racine du dépôt :
 
 ```powershell
+npm install
+
 cd theia
-yarn install
-yarn build
-yarn start
+corepack enable
+corepack prepare yarn@1.22.22 --activate
+yarn install --non-interactive --network-timeout 600000
 ```
 
-Le premier build est lourd car Theia et Electron doivent être téléchargés et reconstruits.
+## Compilation et démarrage
 
-## Décisions de propriété
-
-```text
-Theia      → IDE et surfaces de développement
-OpenFox    → agents, sessions, workflows et orchestration
-Security   → autorisations, secrets, MCP sensibles et audit
-Yfastos    → mémoire unifiée, watchdog et synchronisation
+```powershell
+yarn workspace @ide-ai/theia-core compile
+yarn workspace ide-ai-theia-electron build
+yarn workspace ide-ai-theia-electron start
 ```
 
-La vue `OpenFox` ne duplique pas encore le chat complet. Elle valide d’abord les connexions frontend/backend et les frontières de services. Le portage fonctionnel du chat et des workflows vient ensuite.
+Au démarrage, le panneau `OpenFox` s’ouvre à droite. Il affiche une page d’attente pendant le lancement du runtime, puis charge l’interface OpenFox complète.
+
+## Politique de CI économique
+
+Les workflows lourds sont manuels :
+
+- `Theia Spike` compile le module sur demande ;
+- `Theia Windows Desktop` fabrique l’installateur sur demande ;
+- l’artefact Windows conserve uniquement `IDE-AI-Setup-*.exe` pendant un jour ;
+- les commits ordinaires n’exécutent que la CI structurelle légère.
+
+Cette politique évite les reconstructions Electron et les artefacts de plusieurs centaines de mégaoctets à chaque petite modification.
