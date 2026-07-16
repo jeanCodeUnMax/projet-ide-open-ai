@@ -1,6 +1,6 @@
 import { ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { access, appendFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,7 +21,6 @@ export interface ManagedOpenFoxSnapshot {
 }
 
 interface RuntimePaths {
-  root: string;
   configDir: string;
   dataDir: string;
   configPath: string;
@@ -33,15 +32,6 @@ interface RuntimePaths {
 
 const now = (): string => new Date().toISOString();
 const sleep = (duration: number): Promise<void> => new Promise(resolve => setTimeout(resolve, duration));
-
-async function pathExists(target: string): Promise<boolean> {
-  try {
-    await access(target);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function readJson<T>(target: string, fallback: T): Promise<T> {
   try {
@@ -65,21 +55,15 @@ function resolveLegacyUserDataRoot(): string {
   }
 
   const roaming = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+  const configHome = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
   const candidates = process.platform === 'win32'
-    ? [
-        path.join(roaming, 'IDE Open AI'),
-        path.join(roaming, 'projet-ide-open-ai'),
-        path.join(roaming, 'IDE-AI'),
-      ]
+    ? [path.join(roaming, 'IDE Open AI'), path.join(roaming, 'projet-ide-open-ai'), path.join(roaming, 'IDE-AI')]
     : process.platform === 'darwin'
       ? [
           path.join(os.homedir(), 'Library', 'Application Support', 'IDE Open AI'),
           path.join(os.homedir(), 'Library', 'Application Support', 'IDE-AI'),
         ]
-      : [
-          path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'IDE Open AI'),
-          path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'IDE-AI'),
-        ];
+      : [path.join(configHome, 'IDE Open AI'), path.join(configHome, 'IDE-AI')];
 
   return candidates.find(candidate => existsSync(path.join(candidate, 'openfox-runtime'))) || candidates[0];
 }
@@ -101,21 +85,18 @@ function createRuntimePaths(userDataRoot: string): RuntimePaths {
     env.HOME = virtualHome;
   }
 
-  let configDir: string;
-  let dataDir: string;
-  if (process.platform === 'darwin') {
-    configDir = path.join(virtualHome, 'Library', 'Application Support', 'openfox');
-    dataDir = configDir;
-  } else if (process.platform === 'win32') {
-    configDir = path.join(roaming, 'openfox');
-    dataDir = path.join(local, 'openfox');
-  } else {
-    configDir = path.join(xdgConfig, 'openfox');
-    dataDir = path.join(xdgData, 'openfox');
-  }
+  const configDir = process.platform === 'darwin'
+    ? path.join(virtualHome, 'Library', 'Application Support', 'openfox')
+    : process.platform === 'win32'
+      ? path.join(roaming, 'openfox')
+      : path.join(xdgConfig, 'openfox');
+  const dataDir = process.platform === 'darwin'
+    ? configDir
+    : process.platform === 'win32'
+      ? path.join(local, 'openfox')
+      : path.join(xdgData, 'openfox');
 
   return {
-    root,
     configDir,
     dataDir,
     configPath: path.join(configDir, 'config.json'),
@@ -126,29 +107,11 @@ function createRuntimePaths(userDataRoot: string): RuntimePaths {
   };
 }
 
-function defaultConfig(port: number, workspace: string): Record<string, unknown> {
-  return {
-    providers: [],
-    mcpServers: {},
-    server: { port, host: '127.0.0.1', openBrowser: false },
-    logging: { level: 'info' },
-    database: { path: '' },
-    workspace: { workdir: workspace },
-    visionFallback: {
-      enabled: false,
-      url: 'http://localhost:11434',
-      model: 'qwen3.5:0.8b',
-      timeout: 120,
-      backend: 'ollama',
-    },
-  };
-}
-
 function resolveEnvPlaceholders(value: unknown, env: NodeJS.ProcessEnv = process.env): unknown {
   if (typeof value === 'string') {
     return value.replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, variableName: string) => {
       const resolved = env[variableName];
-      if (resolved === undefined || resolved === '') {
+      if (!resolved) {
         throw new Error(`Variable d'environnement manquante: ${variableName}`);
       }
       return resolved;
@@ -163,52 +126,69 @@ function resolveEnvPlaceholders(value: unknown, env: NodeJS.ProcessEnv = process
   return value;
 }
 
-function inheritedRuntimeEnvironment(env: NodeJS.ProcessEnv): Record<string, string> {
-  const allowed = [
+function inheritedEnvironment(env: NodeJS.ProcessEnv): Record<string, string> {
+  const keys = [
     'PATH', 'Path', 'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'APPDATA', 'LOCALAPPDATA',
     'SystemRoot', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP', 'SHELL', 'LANG',
   ];
-  return Object.fromEntries(
-    allowed.flatMap(key => env[key] === undefined ? [] : [[key, env[key] as string]]),
-  );
+  const result: Record<string, string> = {};
+  for (const key of keys) {
+    if (env[key] !== undefined) {
+      result[key] = env[key] as string;
+    }
+  }
+  return result;
 }
 
 async function ensureBootstrap(paths: RuntimePaths, port: number, workspace: string): Promise<void> {
   await mkdir(paths.configDir, { recursive: true });
   await mkdir(paths.dataDir, { recursive: true });
 
-  const defaults = defaultConfig(port, workspace);
-  const current = await readJson<Record<string, unknown>>(paths.configPath, defaults);
-  const currentServer = current.server && typeof current.server === 'object' ? current.server as Record<string, unknown> : {};
-  const currentWorkspace = current.workspace && typeof current.workspace === 'object' ? current.workspace as Record<string, unknown> : {};
-  const merged: Record<string, unknown> = {
-    ...defaults,
-    ...current,
-    server: { ...currentServer, port, host: '127.0.0.1', openBrowser: false },
-    workspace: { ...currentWorkspace, workdir: workspace },
+  const defaults: Record<string, unknown> = {
+    providers: [],
+    mcpServers: {},
+    server: { port, host: '127.0.0.1', openBrowser: false },
+    logging: { level: 'info' },
+    database: { path: '' },
+    workspace: { workdir: workspace },
+    visionFallback: {
+      enabled: false,
+      url: 'http://localhost:11434',
+      model: 'qwen3.5:0.8b',
+      timeout: 120,
+      backend: 'ollama',
+    },
   };
-
-  const canonical = await readJson<{ toolLimit?: number; mcpServers?: Record<string, unknown> }>(
+  const current = await readJson<Record<string, unknown>>(paths.configPath, defaults);
+  const currentServer = typeof current.server === 'object' && current.server ? current.server as Record<string, unknown> : {};
+  const currentWorkspace = typeof current.workspace === 'object' && current.workspace ? current.workspace as Record<string, unknown> : {};
+  const canonical = await readJson<{ toolLimit?: number; mcpServers?: Record<string, Record<string, unknown>> }>(
     paths.canonicalMcpPath,
-    { toolLimit: 100, mcpServers: (current.mcpServers as Record<string, unknown> | undefined) || {} },
+    { toolLimit: 100, mcpServers: (current.mcpServers as Record<string, Record<string, unknown>> | undefined) || {} },
   );
-  if (!(await pathExists(paths.canonicalMcpPath))) {
-    await writeJsonAtomic(paths.canonicalMcpPath, canonical);
-  }
 
   const resolvedServers = resolveEnvPlaceholders(canonical.mcpServers || {}) as Record<string, Record<string, unknown>>;
-  const inherited = inheritedRuntimeEnvironment(process.env);
+  const inherited = inheritedEnvironment(process.env);
   const runnableServers = Object.fromEntries(Object.entries(resolvedServers).map(([name, config]) => {
     const transport = config.transport || (config.url ? 'http' : 'stdio');
     if (transport !== 'stdio') {
       return [name, config];
     }
-    const configuredEnv = config.env && typeof config.env === 'object' ? config.env as Record<string, string> : {};
+    const configuredEnv = typeof config.env === 'object' && config.env ? config.env as Record<string, string> : {};
     return [name, { ...config, transport, env: { ...inherited, ...configuredEnv } }];
   }));
 
-  await writeJsonAtomic(paths.configPath, { ...merged, mcpServers: runnableServers });
+  await writeJsonAtomic(paths.configPath, {
+    ...defaults,
+    ...current,
+    server: { ...currentServer, port, host: '127.0.0.1', openBrowser: false },
+    workspace: { ...currentWorkspace, workdir: workspace },
+    mcpServers: runnableServers,
+  });
   await writeJsonAtomic(paths.authPath, { strategy: 'local', encryptedPassword: null });
+  if (!existsSync(paths.canonicalMcpPath)) {
+    await writeJsonAtomic(paths.canonicalMcpPath, canonical);
+  }
 }
 
 async function findAvailablePort(startPort: number, attempts = 40): Promise<number> {
@@ -227,18 +207,18 @@ async function findAvailablePort(startPort: number, attempts = 40): Promise<numb
 }
 
 function locateOpenFoxCli(): string {
-  let serverEntry: string;
-  try {
-    serverEntry = require.resolve('openfox');
-  } catch (error) {
-    throw new Error(`Paquet OpenFox introuvable dans Theia. Lance yarn install. ${error instanceof Error ? error.message : String(error)}`);
+  const configured = process.env.IDE_AI_OPENFOX_CLI?.trim();
+  const candidates = configured ? [path.resolve(configured)] : [];
+  for (const modulesDirectory of require.resolve.paths('openfox') || []) {
+    candidates.push(path.join(modulesDirectory, 'openfox', 'dist', 'cli', 'index.js'));
   }
-  const packageRoot = path.resolve(path.dirname(serverEntry), '..', '..');
-  const cliPath = path.join(packageRoot, 'dist', 'cli', 'index.js');
-  if (!existsSync(cliPath)) {
-    throw new Error(`CLI OpenFox introuvable: ${cliPath}`);
+  candidates.push(path.resolve(__dirname, '../../../../..', 'node_modules', 'openfox', 'dist', 'cli', 'index.js'));
+
+  const found = [...new Set(candidates)].find(candidate => existsSync(candidate));
+  if (!found) {
+    throw new Error('CLI OpenFox introuvable. Lance npm install à la racine du projet ou définis IDE_AI_OPENFOX_CLI.');
   }
-  return cliPath;
+  return found;
 }
 
 function locateCompatibilityGuard(): string | undefined {
@@ -268,7 +248,7 @@ export function workspacePathFromUri(uri: string | undefined): string {
       return fileURLToPath(uri);
     }
   } catch {
-    // Continue with a conservative path fallback.
+    // Use the conservative path fallback below.
   }
   return path.resolve(uri.replace(/^file:\/\//, ''));
 }
@@ -315,10 +295,11 @@ export class ManagedOpenFoxRuntime {
     if (this.startPromise) {
       return this.startPromise;
     }
-    this.startPromise = this.startInternal(workspace).finally(() => {
+    const pending = this.startInternal(workspace).finally(() => {
       this.startPromise = undefined;
     });
-    return this.startPromise;
+    this.startPromise = pending;
+    return pending;
   }
 
   async restart(workspaceUri?: string): Promise<ManagedOpenFoxSnapshot> {
@@ -355,7 +336,6 @@ export class ManagedOpenFoxRuntime {
     if (this.child) {
       await this.stop();
     }
-
     this.stopping = false;
     this.workspace = workspace;
     this.state = 'degraded';
@@ -368,19 +348,17 @@ export class ManagedOpenFoxRuntime {
       await ensureBootstrap(this.paths, this.port, workspace);
       await mkdir(path.dirname(this.paths.logPath), { recursive: true });
 
-      const nodeBinary = resolveNodeBinary();
       const cliPath = locateOpenFoxCli();
       const guard = locateCompatibilityGuard();
       const args = [...(guard ? ['--require', guard] : []), cliPath, '--port', String(this.port), '--no-browser'];
-      const env = {
-        ...process.env,
-        ...this.paths.env,
-        OPENFOX_MODE: 'production',
-        WORKSPACE_PATH: workspace,
-      };
-      const child = spawn(nodeBinary, args, {
+      const child = spawn(resolveNodeBinary(), args, {
         cwd: workspace,
-        env,
+        env: {
+          ...process.env,
+          ...this.paths.env,
+          OPENFOX_MODE: 'production',
+          WORKSPACE_PATH: workspace,
+        },
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
       });
@@ -404,16 +382,15 @@ export class ManagedOpenFoxRuntime {
       this.state = 'ready';
       this.message = 'OpenFox est démarré et supervisé par Theia.';
       this.checkedAt = now();
-      return this.snapshot();
     } catch (error) {
-      this.state = 'offline';
-      this.message = error instanceof Error ? error.message : String(error);
-      this.checkedAt = now();
-      this.record('startup', `${this.message}\n`);
+      const message = error instanceof Error ? error.message : String(error);
+      this.record('startup', `${message}\n`);
       await this.stop().catch(() => undefined);
-      this.message = error instanceof Error ? error.message : String(error);
-      return this.snapshot();
+      this.state = 'offline';
+      this.message = message;
+      this.checkedAt = now();
     }
+    return this.snapshot();
   }
 
   private async waitForHealth(timeoutMs = 45_000): Promise<void> {
