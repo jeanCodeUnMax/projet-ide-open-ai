@@ -1,0 +1,35 @@
+appId: com.ideai.desktop
+productName: IDE-AI
+copyright: Copyright © 2026 IDE-AI
+
+electronDist: ../../node_modules/electron/dist
+electronVersion: 39.8.7
+
+asar: true
+asarUnpack:
+  - "**/lib/backend/native/**"
+  - "**/lib/backend/shell-integrations/**"
+  - "**/lib/prebuilds/**"
+
+nodeGypRebuild: false
+npmRebuild: false
+
+directories:
+  output: dist
+
+files:
+  - src-gen
+  - lib
+  - package.json
+  - "!**/*.map"
+
+win:
+  target:
+    - nsis
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  runAfterFinish: false
+  artifactName: IDE-AI-Setup-${version}.${ext}
