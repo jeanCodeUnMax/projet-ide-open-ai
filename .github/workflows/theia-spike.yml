@@ -1,0 +1,36 @@
+name: Theia Spike
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install native Theia prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libx11-dev libxkbfile-dev libsecret-1-dev
+
+      - name: Enable Yarn Classic
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Install Theia workspace
+        working-directory: theia
+        run: yarn install --non-interactive --network-timeout 600000
+
+      - name: Compile IDE-AI extension
+        working-directory: theia
+        run: yarn workspace @ide-ai/theia-core compile
