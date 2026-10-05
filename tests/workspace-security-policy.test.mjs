@@ -34,7 +34,7 @@ test('les variables vides de .env.example ne deviennent pas des secrets critique
 
 test('un vrai secret dans .env reste critique et bloque le mode strict', async () => {
   const workspace = await temporaryWorkspace()
-  await write(workspace, '.env', 'MISTRAL_API_KEY=wJnWLF1UpguUW0gfTyhtyka3KNt7TYO7\n')
+  await write(workspace, '.env', 'MISTRAL_API_KEY=fake-test-fixture-0000000000000000\n')
 
   const report = await auditWorkspaceSecurity(workspace, { mode: 'strict' })
   const secret = report.findings.find((finding) => finding.ruleId === 'secret.known-secret-assignment')
@@ -71,7 +71,7 @@ test('les risques MCP des fichiers example sont informatifs mais restent affich�
 
 test('une clé plausible dans une documentation est à vérifier sans être automatiquement critique', async () => {
   const workspace = await temporaryWorkspace()
-  await write(workspace, 'docs/RAG-PRD.md', 'Exemple historique : MISTRAL_API_KEY=wJnWLF1UpguUW0gfTyhtyka3KNt7TYO7\n')
+  await write(workspace, 'docs/RAG-PRD.md', 'Exemple historique : MISTRAL_API_KEY=fake-test-fixture-0000000000000000\n')
 
   const report = await auditWorkspaceSecurity(workspace, { mode: 'strict' })
   const finding = report.findings.find((item) => item.ruleId === 'secret.known-secret-assignment')
